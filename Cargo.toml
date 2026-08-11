@@ -1,6 +1,6 @@
 [package]
 name = "finlight-client"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Official Rust client for the finlight.me API — financial news with sentiment analysis, entity recognition, and real-time streaming"

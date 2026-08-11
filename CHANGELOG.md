@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+No functional changes — validates the trusted-publishing release pipeline.
+
 ## 0.1.0
 
 Initial release.
