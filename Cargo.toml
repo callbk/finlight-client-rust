@@ -1,0 +1,37 @@
+[package]
+name = "finlight-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Official Rust client for the finlight.me API — financial news with sentiment analysis, entity recognition, and real-time streaming"
+authors = ["finlight.me <info@finlight.me>"]
+license = "MIT"
+homepage = "https://finlight.me"
+repository = "https://github.com/callbk/finlight-client-rust"
+documentation = "https://docs.rs/finlight-client"
+readme = "README.md"
+keywords = ["finance", "news", "api-client", "websocket", "streaming"]
+categories = ["api-bindings", "finance", "asynchronous"]
+exclude = [".github/", "local/"]
+
+[dependencies]
+chrono = { version = "0.4.45", features = ["serde"] }
+futures-core = "0.3.33"
+futures-util = "0.3.33"
+hex = "0.4.3"
+hmac = "0.13.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "query", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "sync", "macros", "net"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+tracing = "0.1.44"
+uuid = { version = "1.24.0", features = ["v4"] }
+
+[dev-dependencies]
+axum = { version = "0.8.9", features = ["ws"] }
+futures = "0.3.33"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "full"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
