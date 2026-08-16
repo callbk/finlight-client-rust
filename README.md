@@ -1,5 +1,7 @@
 # finlight-client (Rust)
 
+*English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)*
+
 [![crates.io](https://img.shields.io/crates/v/finlight-client)](https://crates.io/crates/finlight-client)
 [![docs.rs](https://img.shields.io/docsrs/finlight-client)](https://docs.rs/finlight-client)
 [![CI](https://github.com/callbk/finlight-client-rust/actions/workflows/test.yml/badge.svg)](https://github.com/callbk/finlight-client-rust/actions/workflows/test.yml)
