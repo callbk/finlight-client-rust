@@ -97,7 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 在 `has_more: false`、`next_cursor: None` 或达到 `max_pages`（默认 10）时停止。达到上限时会记录警告，`truncated()` 为 true，可用 `next_cursor()` 继续。
 - 每一页都是一次计费调用。结果只能遍历一次：按文章（`next()` 或作为 `futures` 的 `Stream`）或按页（`next_page()`），另一种方式会返回 `Error::Validation`。
 - `from` 和 `to` 接受 `SystemTime`（以带毫秒的 UTC 发送）、`DateInput::date(y, m, d)`（以 `YYYY-MM-DD` 发送）或字符串（原样发送），作用于 `order_by` 指定的时间戳。
-- `source_types` 和 `exclude_source_types` 按来源类型筛选：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分类来源的文章不会匹配 `source_types`，在 `exclude_source_types` 下会保留。两者只在来源池内筛选，不会添加来源。流不支持这两个参数。
+- `source_types` 和 `exclude_source_types` 按来源类型筛选：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分类来源的文章不会匹配 `source_types`，在 `exclude_source_types` 下会保留。两者只在来源池内筛选，不会添加来源。`StreamParams` 和 `RawStreamParams` 也支持这两个参数。
 - 无法解码的条目会被跳过、记录日志并列在 `page.skipped` 中，页面其余部分仍可使用。
 
 ## 查询文章、公司和来源
@@ -215,7 +215,7 @@ async fn main() -> Result<(), Error> {
 - 丢弃流或调用 `stream.close().await` 会以 1000 关闭套接字并停止所有后台工作。
 - 密钥被拒、套餐不含 WebSocket、订阅无效、关闭码 1008 以及 `connection_limit` 抢占（`Error::Preempted`）时，流以 `Err` 结束。其他问题交给 `on_error`，流继续运行。钩子中的 panic 会被捕获并记录。
 - **WebSocket 配额用尽。** 当本周期配额用尽（拨号被拒或 `quota_exceeded` 抢占）时，流不会结束，而是每小时重试一次，直到配额允许。每次等待都会记录警告并通知 `on_quota_wait`。把 `Config::quota_reconnect` 设为 `false` 则以错误结束；`quota_reconnect_interval` 可修改间隔。REST 调用从不等待：月度 429 会立即失败。
-- `raw_stream` 没有 `include`，也没有增强过滤条件。
+- `raw_stream` 没有 `include`，也没有增强过滤条件，但支持 `source_types` 和 `exclude_source_types`。
 
 ## Webhook
 

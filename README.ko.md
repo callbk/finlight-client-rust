@@ -97,7 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - `has_more: false`, `next_cursor: None`, 또는 `max_pages`(기본 10)에서 멈춥니다. 한도에 도달하면 경고를 남기고 `truncated()`가 true가 되며 `next_cursor()`로 이어서 가져올 수 있습니다.
 - 각 페이지는 과금되는 호출입니다. 결과는 한 번만 순회할 수 있습니다. 기사 단위(`next()` 또는 `futures`의 `Stream`)나 페이지 단위(`next_page()`) 중 하나를 쓰며, 다른 방식은 `Error::Validation`을 반환합니다.
 - `from`과 `to`는 `SystemTime`(밀리초 포함 UTC로 전송), `DateInput::date(y, m, d)`(`YYYY-MM-DD`로 전송), 문자열(그대로 전송)을 받습니다. `order_by` 타임스탬프에 적용됩니다.
-- `source_types`와 `exclude_source_types`는 소스 유형으로 거릅니다: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. 분류되지 않은 소스의 기사는 `source_types`와 일치하지 않고 `exclude_source_types`에서는 남습니다. 둘 다 소스 풀 안에서만 거르며 소스를 추가하지 않습니다. 스트림에서는 쓸 수 없습니다.
+- `source_types`와 `exclude_source_types`는 소스 유형으로 거릅니다: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. 분류되지 않은 소스의 기사는 `source_types`와 일치하지 않고 `exclude_source_types`에서는 남습니다. 둘 다 소스 풀 안에서만 거르며 소스를 추가하지 않습니다. `StreamParams`와 `RawStreamParams`에서도 쓸 수 있습니다.
 - 디코딩할 수 없는 항목은 건너뛰고 로그에 남기며 `page.skipped`에 담깁니다. 페이지의 나머지는 그대로 쓸 수 있습니다.
 
 ## 기사, 기업, 출처 조회
@@ -215,7 +215,7 @@ async fn main() -> Result<(), Error> {
 - 스트림을 drop하거나 `stream.close().await`를 호출하면 소켓을 1000으로 닫고 모든 백그라운드 작업을 멈춥니다.
 - 키 거부, WebSocket이 없는 요금제, 잘못된 구독, 종료 코드 1008, `connection_limit` 선점(`Error::Preempted`)에서는 스트림이 `Err`로 끝납니다. 그 밖의 문제는 `on_error`로 전달되고 스트림은 계속됩니다. 훅의 panic은 잡아서 로그에 남깁니다.
 - **WebSocket 할당량 소진.** 기간 할당량을 다 쓰면(다이얼 거부 또는 `quota_exceeded` 선점) 스트림은 끝나지 않고, 할당량이 허용할 때까지 1시간마다 다시 시도합니다. 대기할 때마다 경고를 남기고 `on_quota_wait`에 알립니다. `Config::quota_reconnect`를 `false`로 두면 오류로 끝납니다. `quota_reconnect_interval`로 간격을 바꿀 수 있습니다. REST 호출은 기다리지 않습니다. 월간 429는 즉시 실패합니다.
-- `raw_stream`에는 `include`도 보강 필터도 없습니다.
+- `raw_stream`에는 `include`도 보강 필터도 없습니다. `source_types`와 `exclude_source_types`는 쓸 수 있습니다.
 
 ## 웹훅
 

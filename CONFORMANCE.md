@@ -121,3 +121,4 @@ the local rejection of the bad input is checked in the same test.
 | S-26 | Dial refused: server error | `sessions.rs` `simple("dial-server-error.json")` |
 | S-27 | connection.preempted, reason quota_exceeded, with quotaReconnect turned off | `sessions.rs` `simple("preempted-quota-exceeded-no-reconnect.json")` |
 | S-28 | Dial refused: WebSocket quota exhausted, with quotaReconnect turned off | `sessions.rs` `simple("dial-quota-exceeded-no-reconnect.json")` |
+| S-29 | VALIDATION_FAILED for an unknown sourceTypes value | `sessions.rs` `s29` |

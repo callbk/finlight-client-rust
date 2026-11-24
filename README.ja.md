@@ -97,7 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - `has_more: false`、`next_cursor: None`、または `max_pages`（既定 10）で止まります。上限に達すると警告を記録し、`truncated()` が true になり、`next_cursor()` で続きを取得できます。
 - 各ページは課金対象の呼び出しです。結果は 1 回だけ反復できます。記事単位（`next()` または `futures` の `Stream`）かページ単位（`next_page()`）のどちらかで、もう一方は `Error::Validation` を返します。
 - `from` と `to` は `SystemTime`（UTC、ミリ秒付きで送信）、`DateInput::date(y, m, d)`（`YYYY-MM-DD` で送信）、文字列（そのまま送信）を受け付けます。`order_by` のタイムスタンプに適用されます。
-- `source_types` と `exclude_source_types` はソースの種類で絞り込みます：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分類のソースの記事は `source_types` に一致せず、`exclude_source_types` では残ります。どちらもソースプールの中で絞り込むだけで、ソースを追加しません。ストリームでは使えません。
+- `source_types` と `exclude_source_types` はソースの種類で絞り込みます：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分類のソースの記事は `source_types` に一致せず、`exclude_source_types` では残ります。どちらもソースプールの中で絞り込むだけで、ソースを追加しません。`StreamParams` と `RawStreamParams` でも使えます。
 - デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。
 
 ## 記事・企業・ソースの参照
@@ -215,7 +215,7 @@ async fn main() -> Result<(), Error> {
 - ストリームを drop するか `stream.close().await` を呼ぶと、ソケットを 1000 で閉じ、バックグラウンド処理をすべて止めます。
 - キーの拒否、WebSocket を含まないプラン、無効な購読、クローズコード 1008、`connection_limit` によるプリエンプト（`Error::Preempted`）では、ストリームは `Err` で終了します。その他の問題は `on_error` に渡され、ストリームは続きます。フック内の panic は捕捉されてログに記録されます。
 - **WebSocket クォータの使い切り。** 期間のクォータを使い切った場合（ダイヤル拒否または `quota_exceeded` プリエンプト）、ストリームは終了せず、クォータが戻るまで 1 時間ごとに再試行します。待機のたびに警告を記録し、`on_quota_wait` に通知します。`Config::quota_reconnect` を `false` にするとエラーで終了します。`quota_reconnect_interval` で間隔を変えられます。REST は待ちません。月次の 429 はすぐに失敗します。
-- `raw_stream` には `include` もエンリッチ用のフィルターもありません。
+- `raw_stream` には `include` もエンリッチ用のフィルターもありません。`source_types` と `exclude_source_types` は使えます。
 
 ## Webhook
 

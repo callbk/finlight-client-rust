@@ -1,4 +1,4 @@
-//! S-01 .. S-28, R-13, R-14: WebSocket sessions played against the in-process server, on the
+//! S-01 .. S-29, R-13, R-14: WebSocket sessions played against the in-process server, on the
 //! paused tokio clock.
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -31,6 +31,7 @@ pub struct ErrInfo {
     pub reason: Option<String>,
     pub new_lease_id: Option<String>,
     pub fields: Vec<(Option<String>, bool)>,
+    pub allowed_values: Vec<Option<Vec<String>>>,
 }
 
 pub fn err_info(e: &Error) -> ErrInfo {
@@ -54,6 +55,11 @@ pub fn err_info(e: &Error) -> ErrInfo {
                         i.constraints.as_ref().is_some_and(|c| !c.is_empty()),
                     )
                 })
+                .collect();
+            info.allowed_values = a
+                .errors()
+                .iter()
+                .map(|i| i.allowed_values.clone())
                 .collect();
         }
         Error::Preempted(p) => {
@@ -788,6 +794,29 @@ fn s08() {
     })
 }
 
+fn s29() {
+    run_paused(async {
+        let fixture = session("validation-failed-source-type.json");
+        // Values are not checked locally: the unknown value goes out and the server rejects it.
+        let s = play(&fixture, Opts::default()).await;
+        {
+            let o = s.probe.obs();
+            let err = o.terminal.clone().expect("a terminal error");
+            let detail = &fixture["steps"][3]["frame"]["data"]["details"][0];
+            assert_eq!(err.fields.len(), 1);
+            assert_eq!(err.fields[0].0.as_deref(), detail["field"].as_str());
+            let allowed: Vec<String> = detail["allowedValues"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect();
+            assert_eq!(err.allowed_values, vec![Some(allowed)]);
+        }
+        s.finish().await;
+    })
+}
+
 fn s12() {
     run_paused(async {
         let s = play(&session("v2-invalid-json-error.json"), Opts::default()).await;
@@ -964,6 +993,7 @@ pub fn cases() -> Vec<crate::common::Case> {
             "S-28",
             Box::new(simple("dial-quota-exceeded-no-reconnect.json")),
         ),
+        ("S-29", Box::new(s29)),
     ]
 }
 

@@ -143,12 +143,17 @@ fn scope_requests_carry_no_v2_keys() {
             .tickers(["XMPL"])
             .countries(["US"])
             .categories(["markets"])
+            .source_types([SourceType::NEWSWIRE, "wire_service"])
+            .exclude_source_types([SourceType::BLOG])
             .exclude_empty_content(false)
             .include_updates(true)
             .include([IncludeBlock::COMPANIES]);
         let mut s = c.stream(params, StreamOptions::new()).await.unwrap();
         let frame = ws.wait_dial(0).await.conn.unwrap().next("subscribe").await;
-        assert_eq!(frame.as_object().unwrap().len(), 13, "{frame}");
+        assert_eq!(frame.as_object().unwrap().len(), 15, "{frame}");
+        // Unknown values go out unchanged; the server rejects them (S-29).
+        assert_eq!(frame["sourceTypes"], json!(["newswire", "wire_service"]));
+        assert_eq!(frame["excludeSourceTypes"], json!(["blog"]));
         for k in FORBIDDEN_KEYS {
             assert!(frame.get(k).is_none());
         }
@@ -157,19 +162,23 @@ fn scope_requests_carry_no_v2_keys() {
             .query("q")
             .sources(["a"])
             .exclude_sources(["b"])
+            .source_types([SourceType::PRESS_RELEASE])
+            .exclude_source_types([SourceType::AGGREGATOR])
             .language("en")
             .include_updates(true);
         let mut s = c.raw_stream(raw, StreamOptions::new()).await.unwrap();
         let dial = ws.wait_dial(1).await;
         assert_eq!(dial.path, "/raw");
         let frame = dial.conn.unwrap().next("subscribe").await;
-        assert_eq!(frame.as_object().unwrap().len(), 7, "{frame}");
+        assert_eq!(frame.as_object().unwrap().len(), 9, "{frame}");
         assert!(frame.get("include").is_none());
-        // Source-type filters exist on article search only, not on streams.
+        assert_eq!(frame["sourceTypes"], json!(["press_release"]));
+        assert_eq!(frame["excludeSourceTypes"], json!(["aggregator"]));
+        // Both stream kinds take the source-type filters, also from JSON.
         for key in ["sourceTypes", "excludeSourceTypes"] {
             let json = format!(r#"{{"{key}":["blog"]}}"#);
-            assert!(StreamParams::from_json(&json).is_err(), "{key}");
-            assert!(RawStreamParams::from_json(&json).is_err(), "{key}");
+            assert!(StreamParams::from_json(&json).is_ok(), "{key}");
+            assert!(RawStreamParams::from_json(&json).is_ok(), "{key}");
         }
         s.close().await;
         spinner.abort();

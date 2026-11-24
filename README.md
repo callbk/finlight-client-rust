@@ -95,7 +95,7 @@ async fn main() -> Result<(), finlight::Error> {
 - It stops at `has_more: false`, at `next_cursor: None` or after `max_pages` (default 10). At the limit it logs a warning, `truncated()` is true and `next_cursor()` lets you continue.
 - Every page is a metered call. Iterate a result once: either articles (`next()`, or as a `futures` `Stream`) or pages (`next_page()`); the other way then returns `Error::Validation`.
 - `from` and `to` take a `SystemTime` (sent as UTC with milliseconds), `DateInput::date(y, m, d)` (sent as `YYYY-MM-DD`) or a string (sent as is). They apply to the `order_by` timestamp.
-- `source_types` and `exclude_source_types` filter by source type: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. Articles of unclassified sources never match `source_types` and are kept by `exclude_source_types`. Both filter inside the source pool and never add a source. Streams do not take them.
+- `source_types` and `exclude_source_types` filter by source type: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. Articles of unclassified sources never match `source_types` and are kept by `exclude_source_types`. Both filter inside the source pool and never add a source. `StreamParams` and `RawStreamParams` take them too.
 - Entries that cannot be decoded are skipped, logged and listed in `page.skipped`. The rest of the page stays usable.
 
 ## Look up articles, companies and sources
@@ -213,7 +213,7 @@ Things to know:
 - Dropping the stream or `stream.close().await` closes the socket with 1000 and stops all background work.
 - A stream ends with an `Err` for a refused key, a plan without WebSockets, an invalid subscribe, close code 1008 and a `connection_limit` preemption (`Error::Preempted`). Other problems go to `on_error` and the stream keeps running. Panics in hooks are caught and logged.
 - **Used-up WebSocket quota.** When the quota of the period is used up (refused dial or `quota_exceeded` preemption), the stream does not end: it tries again every hour until the quota allows it. Each wait is logged as a warning and reported to `on_quota_wait`. Set `Config::quota_reconnect` to `false` to end the stream with the error instead; `quota_reconnect_interval` changes the interval. REST calls never wait: a monthly 429 fails at once.
-- `raw_stream` has no `include` and no enrichment filters.
+- `raw_stream` has no `include` and no enrichment filters. It does take `source_types` and `exclude_source_types`.
 
 ## Webhooks
 

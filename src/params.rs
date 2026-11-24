@@ -616,6 +616,10 @@ pub struct StreamParams {
     pub countries: Option<Vec<String>>,
     /// Categories.
     pub categories: Option<Vec<String>>,
+    /// Only sources of these types. Articles of unclassified sources never match.
+    pub source_types: Option<Vec<SourceType>>,
+    /// Source types left out. Articles of unclassified sources are kept.
+    pub exclude_source_types: Option<Vec<SourceType>>,
     /// Leave out articles without content.
     pub exclude_empty_content: Option<bool>,
     /// Without it the server never sends `article.updated`.
@@ -658,6 +662,10 @@ impl StreamParams {
     }
 
     vocab_list_setters! {
+        /// Only sources of these types (`SourceType::NEWSWIRE`, ...).
+        source_types: SourceType,
+        /// Source types left out.
+        exclude_source_types: SourceType,
         /// Extra blocks.
         include: IncludeBlock,
     }
@@ -681,6 +689,8 @@ impl StreamParams {
         put_list(&mut m, "tickers", &self.tickers);
         put_list(&mut m, "countries", &self.countries);
         put_list(&mut m, "categories", &self.categories);
+        put_list(&mut m, "sourceTypes", &self.source_types);
+        put_list(&mut m, "excludeSourceTypes", &self.exclude_source_types);
         put_bool(&mut m, "excludeEmptyContent", self.exclude_empty_content);
         put_bool(&mut m, "includeUpdates", self.include_updates);
         Ok(m)
@@ -699,6 +709,10 @@ pub struct RawStreamParams {
     pub sources: Option<Vec<String>>,
     /// Source domains left out.
     pub exclude_sources: Option<Vec<String>>,
+    /// Only sources of these types. Articles of unclassified sources never match.
+    pub source_types: Option<Vec<SourceType>>,
+    /// Source types left out. Articles of unclassified sources are kept.
+    pub exclude_source_types: Option<Vec<SourceType>>,
     /// One language.
     pub language: Option<String>,
     /// Also deliver `article.updated`.
@@ -740,6 +754,13 @@ impl RawStreamParams {
         exclude_sources,
     }
 
+    vocab_list_setters! {
+        /// Only sources of these types (`SourceType::NEWSWIRE`, ...).
+        source_types: SourceType,
+        /// Source types left out.
+        exclude_source_types: SourceType,
+    }
+
     bool_setters! {
         /// Also deliver `article.updated`.
         include_updates,
@@ -751,6 +772,8 @@ impl RawStreamParams {
         put_str(&mut m, "query", &self.query);
         put_list(&mut m, "sources", &self.sources);
         put_list(&mut m, "excludeSources", &self.exclude_sources);
+        put_list(&mut m, "sourceTypes", &self.source_types);
+        put_list(&mut m, "excludeSourceTypes", &self.exclude_source_types);
         put_str(&mut m, "language", &self.language);
         put_bool(&mut m, "includeUpdates", self.include_updates);
         m

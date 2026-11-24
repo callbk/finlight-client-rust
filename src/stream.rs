@@ -430,7 +430,16 @@ fn stream_error(
             errors.push(FieldIssue {
                 field: item.get("field").and_then(Value::as_str).map(str::to_owned),
                 issue,
-                allowed_values: None,
+                // Closed vocabularies (sourceTypes, include) name the accepted values.
+                allowed_values: item
+                    .get("allowedValues")
+                    .and_then(Value::as_array)
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    }),
                 constraints: Some(constraints),
             });
         }
