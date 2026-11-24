@@ -135,7 +135,7 @@ async fn main() -> Result<(), finlight::Error> {
 - ID 도입 전에 색인된 기사는 ID로 조회할 수 없습니다. `get_by_link`를 쓰세요.
 - 기업 엔드포인트에는 `entityAccess` 권한이 필요하며, 없으면 403(`ApiErrorKind::Forbidden`)을 반환합니다.
 - `companies().get()`은 ETag를 저장하고 재검증합니다. 304이면 저장된 레코드를 반환하며 `cache_info().not_modified == true`입니다. 직접 ETag를 쓰는 `get_if_none_match`는 304에서 `Ok(None)`을 반환합니다.
-- 조회도 기사 호출처럼 크레딧을 씁니다. `companies()`(`search`, `get_many`, `get`, `get_if_none_match`)와 `sources().list()`는 성공한 요청마다 1크레딧이며, ID가 여러 개인 `get_many`도 1크레딧입니다. 304 재검증과 오류는 무료입니다.
+- 조회도 기사 호출처럼 크레딧을 씁니다. `companies()`(`search`, `get_many`, `get`, `get_if_none_match`)와 `sources().list()`는 요청마다 1크레딧이며, ID가 여러 개인 `get_many`도 1크레딧입니다. 304 재검증과 오류도 1크레딧입니다.
 - `CompanyList`와 `SourceList`는 슬라이스처럼 쓸 수 있고, 디코딩하지 못한 항목은 `skipped()`에 있습니다.
 
 ## 키 없음, null, 빈 목록

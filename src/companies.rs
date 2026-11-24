@@ -59,7 +59,7 @@ fn cache_info(resp: &Response, not_modified: bool) -> CacheInfo {
 
 impl Companies<'_> {
     /// Resolves companies by ticker, name, alias, ISIN or vendor notation (at most 10 results,
-    /// no pages). Costs 1 credit per successful request; errors are free.
+    /// no pages). Costs 1 credit per request, errors included.
     pub async fn search(&self, params: &CompanySearchParams) -> Result<CompanyList> {
         let mut req = Request::get("/v3/companies");
         req.query = params.to_query()?;
@@ -68,7 +68,7 @@ impl Companies<'_> {
     }
 
     /// Resolves 1 to 10 company ids. Unknown ids are left out; the order is not guaranteed.
-    /// Costs 1 credit per successful request, however many ids it carries; errors are free.
+    /// Costs 1 credit per request, however many ids it carries, errors included.
     pub async fn get_many(&self, ids: &[i64]) -> Result<CompanyList> {
         let mut req = Request::get("/v3/companies");
         req.query.push(("ids", company_ids_query(ids)?));
@@ -80,7 +80,8 @@ impl Companies<'_> {
     ///
     /// The SDK keeps recent records with their ETag (`Config::company_cache_size`) and
     /// revalidates them; on 304 it returns the stored record with `cache_info().not_modified`.
-    /// Costs 1 credit per successful (2xx) request; a 304 revalidation and errors are free.
+    /// Costs 1 credit per request, like an article request; a 304 revalidation and errors cost
+    /// 1 credit too.
     pub async fn get(&self, company_id: i64) -> Result<CompanyRecord> {
         check_company_id(company_id, "company_id")?;
         let cached = self.inner.companies.get(company_id);
@@ -113,8 +114,8 @@ impl Companies<'_> {
     }
 
     /// One company, revalidated with your own ETag (`If-None-Match`). `Ok(None)` means
-    /// "not modified" (304), which is never an error. Costs 1 credit per successful (2xx)
-    /// request; a 304 revalidation and errors are free.
+    /// "not modified" (304), which is never an error. Costs 1 credit per request; a 304
+    /// revalidation and errors cost 1 credit too.
     pub async fn get_if_none_match(
         &self,
         company_id: i64,

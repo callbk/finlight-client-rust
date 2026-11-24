@@ -135,7 +135,7 @@ async fn main() -> Result<(), finlight::Error> {
 - ID 導入前にインデックスされた記事は ID で参照できません。`get_by_link` を使ってください。
 - 企業エンドポイントには `entityAccess` 権限が必要です。ない場合は 403（`ApiErrorKind::Forbidden`）になります。
 - `companies().get()` は ETag を保持して再検証します。304 のときは保存済みのレコードを返し、`cache_info().not_modified == true` になります。独自の ETag を使う `get_if_none_match` は 304 で `Ok(None)` を返します。
-- 参照の呼び出しも記事と同じくクレジットを消費します。`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）と `sources().list()` は成功したリクエストごとに 1 クレジットで、複数 ID の `get_many` も 1 クレジットです。304 の再検証とエラーは無料です。
+- 参照の呼び出しも記事と同じくクレジットを消費します。`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）と `sources().list()` はリクエストごとに 1 クレジットで、複数 ID の `get_many` も 1 クレジットです。304 の再検証とエラーも 1 クレジットです。
 - `CompanyList` と `SourceList` はスライスとして参照でき、デコードできなかったエントリは `skipped()` にあります。
 
 ## キーなし、null、空リスト

@@ -133,7 +133,7 @@ async fn main() -> Result<(), finlight::Error> {
 - Articles indexed before the id rollout have no id lookup. Use `get_by_link` for them.
 - Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ApiErrorKind::Forbidden`).
 - `companies().get()` keeps the ETag and revalidates; on 304 you get the stored record with `cache_info().not_modified == true`. With your own ETag, `get_if_none_match` returns `Ok(None)` on 304.
-- Lookups cost credits like article calls: every successful request of `companies()` (`search`, `get_many`, `get`, `get_if_none_match`) and `sources().list()` costs 1 credit, `get_many` with several ids included. A 304 revalidation and errors are free.
+- Lookups cost credits like article calls: every request of `companies()` (`search`, `get_many`, `get`, `get_if_none_match`) and `sources().list()` costs 1 credit, `get_many` with several ids included. A 304 revalidation and errors cost 1 credit too.
 - `CompanyList` and `SourceList` dereference to slices and have `skipped()` for entries that could not be decoded.
 
 ## Absent, null and empty

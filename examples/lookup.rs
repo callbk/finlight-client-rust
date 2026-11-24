@@ -1,5 +1,5 @@
 //! Lookups: an article by link and by id, a 404, companies (entityAccess) and the source list.
-//! Every successful call costs 1 credit; errors and a 304 revalidation are free.
+//! Every call costs 1 credit, errors and a 304 revalidation included.
 //!
 //! Run: `FINLIGHT_API_KEY=... cargo run --example lookup`
 

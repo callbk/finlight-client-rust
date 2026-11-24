@@ -135,7 +135,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 在引入 ID 之前建立索引的文章无法按 ID 查询，请使用 `get_by_link`。
 - 公司接口需要 `entityAccess` 权限，否则返回 403（`ApiErrorKind::Forbidden`）。
 - `companies().get()` 会保存 ETag 并重新验证；收到 304 时返回已保存的记录，且 `cache_info().not_modified == true`。使用自己的 ETag 时，`get_if_none_match` 在 304 时返回 `Ok(None)`。
-- 查询接口和文章调用一样消耗 credit：`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）和 `sources().list()` 每次成功请求消耗 1 个 credit，包含多个 ID 的 `get_many` 也只算 1 个。304 重新验证和错误不收费。
+- 查询接口和文章调用一样消耗 credit：`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）和 `sources().list()` 每次请求消耗 1 个 credit，包含多个 ID 的 `get_many` 也只算 1 个。304 重新验证和错误也消耗 1 个 credit。
 - `CompanyList` 和 `SourceList` 可当作切片使用，无法解码的条目在 `skipped()` 中。
 
 ## 缺失、null 与空
