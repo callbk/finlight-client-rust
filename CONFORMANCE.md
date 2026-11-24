@@ -1,6 +1,6 @@
 # Conformance case map
 
-Every case of the finlight API v3 contract kit 3.0.0-rc.5 (`conformance/conformance.md`) and the test that runs it.
+Every case of the finlight API v3 contract kit 3.0.0-rc.6 (`conformance/conformance.md`) and the test that runs it.
 Each case is its own test in `cargo test --test conformance`, named `<case id> <title>`;
 run one with `cargo test --test conformance -- S-18`. The test `kit: every case has a test and a CONFORMANCE.md row`
 fails when a kit case has no test or no row here, and `kit: conformance/ matches its MANIFEST` fails when the copy

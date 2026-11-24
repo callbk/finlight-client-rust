@@ -118,7 +118,7 @@ async fn main() -> Result<(), finlight::Error> {
 
     let found = client.companies().search(&CompanySearchParams::new("NVDA").mic("XNAS")).await?;
     let many = client.companies().get_many(&[4821, 1234]).await?;
-    let record = client.companies().get(4821).await?; // ETag revalidation is built in
+    let record = client.companies().get(4821).await?; // no SDK cache: keep it yourself
     println!("{} {:?} {}", found.len(), record.cache_info(), many.skipped().len());
 
     // With your own ETag: Ok(None) means "not modified"
@@ -134,7 +134,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 404 は空の結果ではなく、`api_kind() == ApiErrorKind::NotFound` の `Error::Api` です。
 - ID 導入前にインデックスされた記事は ID で参照できません。`get_by_link` を使ってください。
 - 企業エンドポイントには `entityAccess` 権限が必要です。ない場合は 403（`ApiErrorKind::Forbidden`）になります。
-- `companies().get()` は ETag を保持して再検証します。304 のときは保存済みのレコードを返し、`cache_info().not_modified == true` になります。独自の ETag を使う `get_if_none_match` は 304 で `Ok(None)` を返します。
+- SDK は企業レコードをキャッシュしません。`companies().get()` は常に通常のリクエストを送ります。主な企業情報は記事のペイロードにすでに含まれています。`cache_info()` でレコードの `ETag` と `Cache-Control` を取得できます。クレジットを節約するには、レコードを自分で保持し、`max-age` の間は再度呼び出さないでください。保持しているレコードを確認するには、その ETag を `get_if_none_match` に渡します。304 のときは `Ok(None)` を返します。304 も 1 クレジットを消費します。
 - 参照の呼び出しも記事と同じくクレジットを消費します。`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）と `sources().list()` はリクエストごとに 1 クレジットで、複数 ID の `get_many` も 1 クレジットです。304 の再検証とエラーも 1 クレジットです。
 - `CompanyList` と `SourceList` はスライスとして参照でき、デコードできなかったエントリは `skipped()` にあります。
 
@@ -327,7 +327,6 @@ finlight::Error                       kind()
 | `burst_wait` | 10 秒 | 429 に `Retry-After` がないときの待ち時間。 |
 | `max_pages` | 10 | `search_all` のページ上限。 |
 | `max_response_bytes` | 32 MiB | REST 応答本文の上限。 |
-| `company_cache_size` | 256 | `companies().get()` の ETag キャッシュの件数。0 で無効。 |
 | `ping_interval` / `watchdog_timeout` / `rotation_interval` | 25 秒 / 60 秒 / 115 分 | ストリームの ping、pong ウォッチドッグ、接続更新。 |
 | `reconnect_base_delay` / `reconnect_max_delay` | 1 秒 / 30 秒 | ストリーム再接続のバックオフ。 |
 | `long_backoff` | 60 秒 | 「接続数超過」と 429 によるダイヤル拒否後の待ち時間。 |

@@ -118,7 +118,7 @@ async fn main() -> Result<(), finlight::Error> {
 
     let found = client.companies().search(&CompanySearchParams::new("NVDA").mic("XNAS")).await?;
     let many = client.companies().get_many(&[4821, 1234]).await?;
-    let record = client.companies().get(4821).await?; // ETag revalidation is built in
+    let record = client.companies().get(4821).await?; // no SDK cache: keep it yourself
     println!("{} {:?} {}", found.len(), record.cache_info(), many.skipped().len());
 
     // With your own ETag: Ok(None) means "not modified"
@@ -134,7 +134,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 404는 빈 결과가 아니라 `api_kind() == ApiErrorKind::NotFound`인 `Error::Api`입니다.
 - ID 도입 전에 색인된 기사는 ID로 조회할 수 없습니다. `get_by_link`를 쓰세요.
 - 기업 엔드포인트에는 `entityAccess` 권한이 필요하며, 없으면 403(`ApiErrorKind::Forbidden`)을 반환합니다.
-- `companies().get()`은 ETag를 저장하고 재검증합니다. 304이면 저장된 레코드를 반환하며 `cache_info().not_modified == true`입니다. 직접 ETag를 쓰는 `get_if_none_match`는 304에서 `Ok(None)`을 반환합니다.
+- SDK는 기업 레코드를 캐시하지 않습니다. `companies().get()`은 항상 일반 요청을 보냅니다. 주요 기업 정보는 기사 페이로드에 이미 들어 있습니다. `cache_info()`로 레코드의 `ETag`와 `Cache-Control`을 얻을 수 있습니다. 크레딧을 아끼려면 레코드를 직접 보관하고 `max-age` 동안 다시 호출하지 마세요. 보관한 레코드를 확인하려면 그 ETag를 `get_if_none_match`에 넘기세요. 304이면 `Ok(None)`을 반환합니다. 304도 1크레딧입니다.
 - 조회도 기사 호출처럼 크레딧을 씁니다. `companies()`(`search`, `get_many`, `get`, `get_if_none_match`)와 `sources().list()`는 요청마다 1크레딧이며, ID가 여러 개인 `get_many`도 1크레딧입니다. 304 재검증과 오류도 1크레딧입니다.
 - `CompanyList`와 `SourceList`는 슬라이스처럼 쓸 수 있고, 디코딩하지 못한 항목은 `skipped()`에 있습니다.
 
@@ -327,7 +327,6 @@ finlight::Error                       kind()
 | `burst_wait` | 10초 | 429에 `Retry-After`가 없을 때의 대기 시간. |
 | `max_pages` | 10 | `search_all`의 페이지 한도. |
 | `max_response_bytes` | 32 MiB | REST 응답 본문의 최대 크기. |
-| `company_cache_size` | 256 | `companies().get()` ETag 캐시의 항목 수. 0이면 끔. |
 | `ping_interval` / `watchdog_timeout` / `rotation_interval` | 25초 / 60초 / 115분 | 스트림 ping, pong 감시, 연결 교체. |
 | `reconnect_base_delay` / `reconnect_max_delay` | 1초 / 30초 | 스트림 재연결 백오프. |
 | `long_backoff` | 60초 | "연결 과다"와 429 다이얼 거부 후 대기 시간. |

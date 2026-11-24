@@ -1,5 +1,6 @@
 //! Lookups: an article by link and by id, a 404, companies (entityAccess) and the source list.
 //! Every call costs 1 credit, errors and a 304 revalidation included.
+//! The SDK keeps no cache of company records: keep them yourself, with `cache_info()`.
 //!
 //! Run: `FINLIGHT_API_KEY=... cargo run --example lookup`
 

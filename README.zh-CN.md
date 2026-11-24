@@ -118,7 +118,7 @@ async fn main() -> Result<(), finlight::Error> {
 
     let found = client.companies().search(&CompanySearchParams::new("NVDA").mic("XNAS")).await?;
     let many = client.companies().get_many(&[4821, 1234]).await?;
-    let record = client.companies().get(4821).await?; // ETag revalidation is built in
+    let record = client.companies().get(4821).await?; // no SDK cache: keep it yourself
     println!("{} {:?} {}", found.len(), record.cache_info(), many.skipped().len());
 
     // With your own ETag: Ok(None) means "not modified"
@@ -134,7 +134,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 404 是 `api_kind() == ApiErrorKind::NotFound` 的 `Error::Api`，而不是空结果。
 - 在引入 ID 之前建立索引的文章无法按 ID 查询，请使用 `get_by_link`。
 - 公司接口需要 `entityAccess` 权限，否则返回 403（`ApiErrorKind::Forbidden`）。
-- `companies().get()` 会保存 ETag 并重新验证；收到 304 时返回已保存的记录，且 `cache_info().not_modified == true`。使用自己的 ETag 时，`get_if_none_match` 在 304 时返回 `Ok(None)`。
+- SDK 不缓存公司记录，`companies().get()` 每次都发送普通请求；主要的公司字段已包含在文章数据中。`cache_info()` 提供记录的 `ETag` 和 `Cache-Control`。如需节省 credit，请自行保存记录，并在 `max-age` 内不再调用。要检查已保存的记录，把它的 ETag 传给 `get_if_none_match`，收到 304 时返回 `Ok(None)`。304 也消耗 1 个 credit。
 - 查询接口和文章调用一样消耗 credit：`companies()`（`search`、`get_many`、`get`、`get_if_none_match`）和 `sources().list()` 每次请求消耗 1 个 credit，包含多个 ID 的 `get_many` 也只算 1 个。304 重新验证和错误也消耗 1 个 credit。
 - `CompanyList` 和 `SourceList` 可当作切片使用，无法解码的条目在 `skipped()` 中。
 
@@ -327,7 +327,6 @@ finlight::Error                       kind()
 | `burst_wait` | 10 秒 | 429 没有 `Retry-After` 时的等待时间。 |
 | `max_pages` | 10 | `search_all` 的页数上限。 |
 | `max_response_bytes` | 32 MiB | REST 响应正文上限。 |
-| `company_cache_size` | 256 | `companies().get()` 的 ETag 缓存条数；0 表示关闭。 |
 | `ping_interval` / `watchdog_timeout` / `rotation_interval` | 25 秒 / 60 秒 / 115 分钟 | 流的 ping、pong 看门狗和连接更换。 |
 | `reconnect_base_delay` / `reconnect_max_delay` | 1 秒 / 30 秒 | 流重连退避。 |
 | `long_backoff` | 60 秒 | “连接过多”和 429 拨号被拒后的等待时间。 |

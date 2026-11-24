@@ -263,11 +263,9 @@ fn r08() {
     run_paused(async move {
         let mock = HttpMock::start().await;
         mock.enqueue(Scripted::from_fixture(&f["response"]));
-        let record = client(&mock.base_url)
-            .companies()
-            .get(900001)
-            .await
-            .unwrap();
+        mock.enqueue(Scripted::from_fixture(&f["response"]));
+        let client = client(&mock.base_url);
+        let record = client.companies().get(900001).await.unwrap();
         expect_request(&mock.requests()[0], &f["request"]);
         assert_eq!(record.company_id, 900001);
         assert_eq!(record.listings.len(), 2);
@@ -290,21 +288,26 @@ fn r08() {
             info.cache_control.as_deref(),
             f["response"]["headers"]["cache-control"].as_str()
         );
-        assert!(!info.not_modified);
+        // No company cache in the SDK: no If-None-Match without the caller's ETag, also on a
+        // second call for the same id.
+        let again = client.companies().get(900001).await.unwrap();
+        assert_eq!(again.name, record.name);
+        let reqs = mock.requests();
+        assert_eq!(reqs.len(), 2);
+        for req in &reqs {
+            assert_eq!(req.header("if-none-match"), None);
+        }
     })
 }
 
 fn r09() {
-    let first = fixture("fixtures/requests/companies-get.json");
     let f = fixture("fixtures/requests/companies-get-not-modified.json");
     run_paused(async move {
         let mock = HttpMock::start().await;
-        mock.enqueue(Scripted::from_fixture(&first["response"]));
-        mock.enqueue(Scripted::from_fixture(&f["response"]));
         mock.enqueue(Scripted::from_fixture(&f["response"]));
         let client = client(&mock.base_url);
-        let record = client.companies().get(900001).await.unwrap();
-        // A caller-supplied ETag: 304 is "not modified", never an error and never a decode.
+        // The caller's ETag goes out unchanged; 304 is "not modified", never an error and
+        // never a decode.
         let etag = f["sdk"]["args"]["ifNoneMatch"].as_str().unwrap();
         let again = client
             .companies()
@@ -313,23 +316,19 @@ fn r09() {
             .unwrap();
         assert!(again.is_none());
         let reqs = mock.requests();
-        expect_request(&reqs[1], &f["request"]);
+        assert_eq!(reqs.len(), 1);
+        expect_request(&reqs[0], &f["request"]);
         assert_eq!(
-            reqs[1].header("if-none-match"),
+            reqs[0].header("if-none-match"),
             f["request"]["headers"]["If-None-Match"].as_str()
         );
+        assert_eq!(reqs[0].header("if-none-match"), Some(etag));
         assert!(
-            !reqs[1]
+            !reqs[0]
                 .header("cache-control")
                 .unwrap_or_default()
                 .contains("no-cache")
         );
-        // The SDK revalidates its own copy and returns it on 304.
-        let third = client.companies().get(900001).await.unwrap();
-        assert_eq!(mock.requests()[2].header("if-none-match"), Some(etag));
-        assert!(third.cache_info().unwrap().not_modified);
-        assert_eq!(third.raw_json(), record.raw_json());
-        assert_eq!(third.name, record.name);
     })
 }
 

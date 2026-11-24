@@ -1,5 +1,4 @@
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::client::Inner;
 use crate::error::{Error, Result};
@@ -16,44 +15,10 @@ pub struct Companies<'a> {
     pub(crate) inner: &'a Arc<Inner>,
 }
 
-/// Small LRU of records with an ETag, for revalidation in `get`.
-pub(crate) struct CompanyCache {
-    cap: usize,
-    entries: Mutex<VecDeque<CompanyRecord>>,
-}
-
-impl CompanyCache {
-    pub fn new(cap: usize) -> Self {
-        CompanyCache {
-            cap,
-            entries: Mutex::new(VecDeque::new()),
-        }
-    }
-
-    fn get(&self, id: i64) -> Option<CompanyRecord> {
-        let entries = self.entries.lock().ok()?;
-        entries.iter().find(|r| r.company_id == id).cloned()
-    }
-
-    fn put(&self, record: &CompanyRecord) {
-        if self.cap == 0 {
-            return;
-        }
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|r| r.company_id != record.company_id);
-            entries.push_back(record.clone());
-            while entries.len() > self.cap {
-                entries.pop_front();
-            }
-        }
-    }
-}
-
-fn cache_info(resp: &Response, not_modified: bool) -> CacheInfo {
+fn cache_info(resp: &Response) -> CacheInfo {
     CacheInfo {
         etag: resp.header("etag"),
         cache_control: resp.header("cache-control"),
-        not_modified,
     }
 }
 
@@ -78,44 +43,33 @@ impl Companies<'_> {
 
     /// One company. A miss is `Error::Api` with `api_kind` `not_found`.
     ///
-    /// The SDK keeps recent records with their ETag (`Config::company_cache_size`) and
-    /// revalidates them; on 304 it returns the stored record with `cache_info().not_modified`.
-    /// Costs 1 credit per request, like an article request; a 304 revalidation and errors cost
+    /// The SDK keeps no cache of company records and sends no `If-None-Match` here. The
+    /// record carries its `ETag` and `Cache-Control` in `cache_info()`: to save credits, keep
+    /// the record yourself and do not call again within `max-age`, or revalidate with
+    /// `get_if_none_match`. Costs 1 credit per request, like an article request; errors cost
     /// 1 credit too.
     pub async fn get(&self, company_id: i64) -> Result<CompanyRecord> {
         check_company_id(company_id, "company_id")?;
-        let cached = self.inner.companies.get(company_id);
-        let mut req = Request::get(format!("/v3/companies/{company_id}"));
-        req.if_none_match = cached
-            .as_ref()
-            .and_then(|r| r.cache_info())
-            .and_then(|c| c.etag.clone());
+        let req = Request::get(format!("/v3/companies/{company_id}"));
         let resp = self.inner.transport.call(&req).await?;
         if resp.status == 304 {
-            let Some(mut record) = cached else {
-                return Err(Error::decode(
-                    "the server answered 304 without a stored record",
-                    None,
-                    None,
-                    None,
-                ));
-            };
-            let mut info = cache_info(&resp, true);
-            if info.etag.is_none() {
-                info.etag = record.cache_info().and_then(|c| c.etag.clone());
-            }
-            record.set_cache_info(info);
-            return Ok(record);
+            return Err(Error::decode(
+                "the server answered 304 to a request without If-None-Match",
+                None,
+                None,
+                None,
+            ));
         }
         let mut record = decode_company_envelope(&resp.body)?;
-        record.set_cache_info(cache_info(&resp, false));
-        self.inner.companies.put(&record);
+        record.set_cache_info(cache_info(&resp));
         Ok(record)
     }
 
-    /// One company, revalidated with your own ETag (`If-None-Match`). `Ok(None)` means
-    /// "not modified" (304), which is never an error. Costs 1 credit per request; a 304
-    /// revalidation and errors cost 1 credit too.
+    /// One company, revalidated with an ETag you kept from an earlier record
+    /// (`cache_info().etag`), sent unchanged as `If-None-Match`. `Ok(None)` means
+    /// "not modified" (304), which is never an error: keep using your own copy. Costs 1 credit
+    /// per request; a 304 and errors cost 1 credit too, so revalidating saves the download,
+    /// not the credit.
     pub async fn get_if_none_match(
         &self,
         company_id: i64,
@@ -135,8 +89,7 @@ impl Companies<'_> {
             return Ok(None);
         }
         let mut record = decode_company_envelope(&resp.body)?;
-        record.set_cache_info(cache_info(&resp, false));
-        self.inner.companies.put(&record);
+        record.set_cache_info(cache_info(&resp));
         Ok(Some(record))
     }
 }

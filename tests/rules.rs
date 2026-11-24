@@ -554,6 +554,36 @@ fn network_errors_are_retried_and_wrapped() {
     });
 }
 
+#[test]
+fn companies_get_keeps_no_cache() {
+    let ok = load("fixtures/requests/companies-get.json");
+    let not_modified = load("fixtures/requests/companies-get-not-modified.json");
+    run_paused(async move {
+        let mock = HttpMock::start().await;
+        let c = client(&mock.base_url);
+        // A record from get_if_none_match is not remembered: get() still sends no If-None-Match.
+        mock.enqueue(Scripted::from_fixture(&ok["response"]));
+        mock.enqueue(Scripted::from_fixture(&ok["response"]));
+        let fresh = c
+            .companies()
+            .get_if_none_match(900001, "\"stale\"")
+            .await
+            .unwrap()
+            .unwrap();
+        let etag = fresh.cache_info().unwrap().etag.clone();
+        assert_eq!(etag.as_deref(), ok["response"]["headers"]["etag"].as_str());
+        c.companies().get(900001).await.unwrap();
+        let reqs = mock.requests();
+        assert_eq!(reqs[0].header("if-none-match"), Some("\"stale\""));
+        assert_eq!(reqs[1].header("if-none-match"), None);
+        // A 304 that get() never asked for is a decode error, not an empty record.
+        mock.enqueue(Scripted::from_fixture(&not_modified["response"]));
+        let err = c.companies().get(900001).await.unwrap_err();
+        assert_eq!(err.kind(), "decode");
+        assert!(c.companies().get_if_none_match(900001, "").await.is_err());
+    });
+}
+
 // ---- R-CONFIG-1 -----------------------------------------------------------------------
 
 #[test]
@@ -570,7 +600,6 @@ fn config_defaults_and_overrides() {
     assert_eq!(c.burst_wait, Duration::from_secs(10));
     assert_eq!(c.max_pages, 10);
     assert_eq!(c.max_response_bytes, 32 * 1024 * 1024);
-    assert_eq!(c.company_cache_size, 256);
     assert_eq!(c.ping_interval, Duration::from_secs(25));
     assert_eq!(c.watchdog_timeout, Duration::from_secs(60));
     assert_eq!(c.rotation_interval, Duration::from_secs(115 * 60));

@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::articles::Articles;
-use crate::companies::{Companies, CompanyCache};
+use crate::companies::Companies;
 use crate::config::Config;
 use crate::error::Result;
 use crate::http::Transport;
@@ -12,11 +12,10 @@ use crate::stream::{FinlightStream, StreamOptions, start};
 
 pub(crate) struct Inner {
     pub transport: Transport,
-    pub companies: CompanyCache,
     pub config: Arc<Config>,
 }
 
-/// Client of the finlight API v3. Cheap to clone; clones share the HTTP client and caches.
+/// Client of the finlight API v3. Cheap to clone; clones share the HTTP client.
 /// Safe to use from many tasks, with many streams at the same time.
 #[derive(Clone)]
 pub struct Client {
@@ -31,7 +30,6 @@ impl Client {
         Ok(Client {
             inner: Arc::new(Inner {
                 transport: Transport::new(config.clone())?,
-                companies: CompanyCache::new(config.company_cache_size),
                 config,
             }),
         })

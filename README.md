@@ -116,7 +116,7 @@ async fn main() -> Result<(), finlight::Error> {
 
     let found = client.companies().search(&CompanySearchParams::new("NVDA").mic("XNAS")).await?;
     let many = client.companies().get_many(&[4821, 1234]).await?;
-    let record = client.companies().get(4821).await?; // ETag revalidation is built in
+    let record = client.companies().get(4821).await?; // no SDK cache: keep it yourself
     println!("{} {:?} {}", found.len(), record.cache_info(), many.skipped().len());
 
     // With your own ETag: Ok(None) means "not modified"
@@ -132,7 +132,7 @@ async fn main() -> Result<(), finlight::Error> {
 - A 404 is `Error::Api` with `api_kind() == ApiErrorKind::NotFound`, not an empty result.
 - Articles indexed before the id rollout have no id lookup. Use `get_by_link` for them.
 - Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ApiErrorKind::Forbidden`).
-- `companies().get()` keeps the ETag and revalidates; on 304 you get the stored record with `cache_info().not_modified == true`. With your own ETag, `get_if_none_match` returns `Ok(None)` on 304.
+- The SDK keeps no cache of company records: `companies().get()` always sends a plain request, and the article payload already carries the main company fields. `cache_info()` gives you the `ETag` and `Cache-Control` of a record. To save credits, keep records yourself and do not call again within `max-age`. To check a kept record, pass its ETag to `get_if_none_match`; it returns `Ok(None)` on 304. A 304 costs 1 credit too.
 - Lookups cost credits like article calls: every request of `companies()` (`search`, `get_many`, `get`, `get_if_none_match`) and `sources().list()` costs 1 credit, `get_many` with several ids included. A 304 revalidation and errors cost 1 credit too.
 - `CompanyList` and `SourceList` dereference to slices and have `skipped()` for entries that could not be decoded.
 
@@ -325,7 +325,6 @@ Cancel a call by dropping its future, for example with `tokio::time::timeout` or
 | `burst_wait` | 10 s | Wait before the burst retry when the 429 has no `Retry-After`. |
 | `max_pages` | 10 | Page limit of `search_all`. |
 | `max_response_bytes` | 32 MiB | Largest REST response body. |
-| `company_cache_size` | 256 | Records in the ETag cache of `companies().get()`; 0 turns it off. |
 | `ping_interval` / `watchdog_timeout` / `rotation_interval` | 25 s / 60 s / 115 min | Stream ping, pong watchdog and rotation. |
 | `reconnect_base_delay` / `reconnect_max_delay` | 1 s / 30 s | Stream reconnect backoff. |
 | `long_backoff` | 60 s | Wait after "too many connections" and 429 dial refusals. |

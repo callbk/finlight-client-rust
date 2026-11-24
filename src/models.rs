@@ -283,7 +283,8 @@ impl CompanyRecord {
         self.raw.as_deref()
     }
 
-    /// ETag data of a record from `companies().get()`; `None` for other records.
+    /// ETag data of a record from `companies().get()` or `get_if_none_match()`; `None` for
+    /// other records.
     pub fn cache_info(&self) -> Option<&CacheInfo> {
         self.cache.as_ref()
     }
@@ -293,16 +294,15 @@ impl CompanyRecord {
     }
 }
 
-/// ETag data of a record from `companies().get()`.
+/// ETag data of a record from `companies().get()` or `get_if_none_match()`, for callers who
+/// keep records themselves. The SDK keeps no cache of company records.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub struct CacheInfo {
     /// `ETag` header; pass it to `companies().get_if_none_match()` later.
     pub etag: Option<String>,
-    /// `Cache-Control` header.
+    /// `Cache-Control` header (`max-age` says how long your own copy stays fresh).
     pub cache_control: Option<String>,
-    /// `true` when the server answered 304 and the SDK returned its cached copy.
-    pub not_modified: bool,
 }
 
 /// A source from `sources().list()`.

@@ -46,8 +46,6 @@ pub struct Config {
     pub max_pages: u32,
     /// Largest REST response body read. Default 32 MiB.
     pub max_response_bytes: usize,
-    /// Records kept by `companies().get()` for ETag revalidation. Default 256, 0 turns it off.
-    pub company_cache_size: usize,
     /// Interval of the application ping on streams. Default 25 s.
     pub ping_interval: Duration,
     /// A stream connection without a pong for this long is replaced. Default 60 s.
@@ -95,7 +93,6 @@ impl Config {
             burst_wait: Duration::from_secs(10),
             max_pages: 10,
             max_response_bytes: 32 * 1024 * 1024,
-            company_cache_size: 256,
             ping_interval: Duration::from_secs(25),
             watchdog_timeout: Duration::from_secs(60),
             rotation_interval: Duration::from_secs(115 * 60),
@@ -207,7 +204,6 @@ impl fmt::Debug for Config {
             .field("burst_wait", &self.burst_wait)
             .field("max_pages", &self.max_pages)
             .field("max_response_bytes", &self.max_response_bytes)
-            .field("company_cache_size", &self.company_cache_size)
             .field("ping_interval", &self.ping_interval)
             .field("watchdog_timeout", &self.watchdog_timeout)
             .field("rotation_interval", &self.rotation_interval)
@@ -293,8 +289,6 @@ impl ConfigBuilder {
         max_pages: u32,
         /// Largest REST response body read.
         max_response_bytes: usize,
-        /// Records kept for ETag revalidation (0 turns the cache off).
-        company_cache_size: usize,
         /// Interval of the stream ping.
         ping_interval: Duration,
         /// Pong watchdog of streams.
