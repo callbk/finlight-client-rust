@@ -13,7 +13,8 @@ pub struct Sources<'a> {
 
 impl Sources<'_> {
     /// The full source catalog, sorted by domain. `has_content` is `None` without
-    /// `fullArticleAccess` (unknown, not "no content").
+    /// `fullArticleAccess` (unknown, not "no content"). Costs 1 credit per successful
+    /// request; errors are free.
     pub async fn list(&self) -> Result<SourceList> {
         let resp = self
             .inner

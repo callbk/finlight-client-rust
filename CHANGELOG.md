@@ -16,7 +16,8 @@
 - Every request and dial sends `User-Agent: finlight-client-rust/0.2.0` and `x-client-version: 0.2.0`; the stream dial sends the API key only as the lowercase `x-api-key` header.
 - Logging through `tracing` (target `finlight`); keys, secrets, signatures and bodies are never logged.
 - MSRV stays 1.85. chrono and thiserror are no longer dependencies.
-- Tested against the API v3 contract kit 3.0.0-rc.4: every kit case runs as its own test (`CONFORMANCE.md`).
+- Lookups (`companies()`, `sources().list()`) cost 1 credit per successful request; a 304 revalidation and errors are free. The method docs say so.
+- Tested against the API v3 contract kit 3.0.0-rc.5: every kit case runs as its own test (`CONFORMANCE.md`).
 
 ## 0.1.1
 
