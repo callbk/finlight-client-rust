@@ -6,6 +6,7 @@
 
 - The library is imported as `finlight` (`use finlight::Client`); the crate stays `finlight-client`.
 - REST: `articles().search()`, `search_all()` (cursor pager, frozen body, `max_pages`), `get()`, `get_by_link()`; `companies().search()`, `get_many()`, `get()` with ETag revalidation and `get_if_none_match()`; `sources().list()`. The SDK sends only what you set and checks the shape locally.
+- Search filters `source_types` and `exclude_source_types` with the open `SourceType` vocabulary (`newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). They exist on article search and `search_all` only, not on streams. `source.type` and `Source::type` are `None` when a source is not classified.
 - Models follow the v3 wire format: tolerant readers, three states for gated keys (`Field<T>`, `Option<_>`), timestamps as sent plus strict `*_time()` accessors, open vocabularies, `raw_json()`, broken list entries in `skipped`.
 - Errors: one `Error` enum with `kind()`; `ApiError` reads problem+json, the NestJS fallback and text bodies, with `api_kind()`, `limit_type()` and `retry_after()`.
 - Retries: 5xx, network errors and timeouts up to 3 times with backoff; a burst 429 waits exactly `Retry-After` (10 s without it) and retries once, on by default (`RetryOnBurst::Off`); a monthly 429 fails at once, also in `search_all`. One `X-Request-Id` per call, kept across retries.
@@ -15,7 +16,7 @@
 - Every request and dial sends `User-Agent: finlight-client-rust/0.2.0` and `x-client-version: 0.2.0`; the stream dial sends the API key only as the lowercase `x-api-key` header.
 - Logging through `tracing` (target `finlight`); keys, secrets, signatures and bodies are never logged.
 - MSRV stays 1.85. chrono and thiserror are no longer dependencies.
-- Tested against the API v3 contract kit 3.0.0-rc.3: every kit case runs as its own test (`CONFORMANCE.md`).
+- Tested against the API v3 contract kit 3.0.0-rc.4: every kit case runs as its own test (`CONFORMANCE.md`).
 
 ## 0.1.1
 

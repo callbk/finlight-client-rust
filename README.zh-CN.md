@@ -97,6 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - 在 `has_more: false`、`next_cursor: None` 或达到 `max_pages`（默认 10）时停止。达到上限时会记录警告，`truncated()` 为 true，可用 `next_cursor()` 继续。
 - 每一页都是一次计费调用。结果只能遍历一次：按文章（`next()` 或作为 `futures` 的 `Stream`）或按页（`next_page()`），另一种方式会返回 `Error::Validation`。
 - `from` 和 `to` 接受 `SystemTime`（以带毫秒的 UTC 发送）、`DateInput::date(y, m, d)`（以 `YYYY-MM-DD` 发送）或字符串（原样发送），作用于 `order_by` 指定的时间戳。
+- `source_types` 和 `exclude_source_types` 按来源类型筛选：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分类来源的文章不会匹配 `source_types`，在 `exclude_source_types` 下会保留。两者只在来源池内筛选，不会添加来源。流不支持这两个参数。
 - 无法解码的条目会被跳过、记录日志并列在 `page.skipped` 中，页面其余部分仍可使用。
 
 ## 查询文章、公司和来源
@@ -349,6 +350,7 @@ SDK 通过 `tracing` 以目标 `finlight` 记录日志。没有订阅者时不�
 - 在角色功能之前打标签的文章中，`companies[].role` 和 `relevance` 为 `None`，`events` 为 `Some([])`。
 - 在引入 ID 之前建立索引的文章，`articles().get()` 返回 404；`get_by_link` 可以找到它们。
 - `available_at` 在 raw 中始终为 `None`，在其上线前的文章中也为 `None`。
+- 来源未分类，或文章在来源类型上线之前被索引时，`source.type` 为 `None`。重新分类后，它可能落后于 `sources().list()` 中的 `type`。
 
 ## 从 0.1 迁移
 

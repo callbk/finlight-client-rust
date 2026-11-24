@@ -139,7 +139,9 @@ impl Article {
 pub struct ArticleSource {
     /// Domain, e.g. `www.reuters.com`; the join key to `sources().list()`.
     pub domain: String,
-    /// Source type (open; `None` today).
+    /// Source type when the article was indexed (open). `None` when the source is not
+    /// classified or the article is older than source types. Can lag `Source::type` after a
+    /// reclassification.
     #[serde(default)]
     pub r#type: Option<SourceType>,
 }
@@ -310,10 +312,10 @@ pub struct CacheInfo {
 pub struct Source {
     /// Domain.
     pub domain: String,
-    /// Name (`None` until the catalog is curated).
+    /// Display name; `None` when the source has none.
     #[serde(default)]
     pub name: Option<String>,
-    /// Type (open; `None` today).
+    /// Source type (open); `None` when the source is not classified.
     #[serde(default)]
     pub r#type: Option<SourceType>,
     /// Part of the default pool.

@@ -17,6 +17,7 @@ use crate::time::{format_date, format_utc_millis};
 use crate::version::PAYLOAD_VERSION;
 use crate::vocab::{
     CompanyRole, EventDirection, EventType, Importance, IncludeBlock, OrderBy, SortOrder,
+    SourceType,
 };
 
 /// A `from` or `to` value.
@@ -233,6 +234,10 @@ pub struct SearchParams {
     pub opt_in_sources: Option<Vec<String>>,
     /// Source domains left out.
     pub exclude_sources: Option<Vec<String>>,
+    /// Only sources of these types. Articles of unclassified sources never match.
+    pub source_types: Option<Vec<SourceType>>,
+    /// Source types left out. Articles of unclassified sources are kept.
+    pub exclude_source_types: Option<Vec<SourceType>>,
     /// Lower bound of the `order_by` timestamp.
     pub from: Option<DateInput>,
     /// Upper bound of the `order_by` timestamp.
@@ -318,6 +323,10 @@ impl SearchParams {
     }
 
     vocab_list_setters! {
+        /// Only sources of these types (`SourceType::NEWSWIRE`, ...).
+        source_types: SourceType,
+        /// Source types left out.
+        exclude_source_types: SourceType,
         /// Company roles.
         roles: CompanyRole,
         /// Event types.
@@ -382,6 +391,8 @@ impl SearchParams {
         put_list(&mut m, "sources", &self.sources);
         put_list(&mut m, "optInSources", &self.opt_in_sources);
         put_list(&mut m, "excludeSources", &self.exclude_sources);
+        put_list(&mut m, "sourceTypes", &self.source_types);
+        put_list(&mut m, "excludeSourceTypes", &self.exclude_source_types);
         if let Some(from) = &self.from {
             m.insert("from".into(), Value::String(from.to_wire("from")?));
         }

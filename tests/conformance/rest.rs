@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use finlight::{
     ApiError, Client, CompanySearchParams, Config, DateInput, Error, GetArticleOptions,
-    SearchAllOptions, SearchParams,
+    SearchAllOptions, SearchParams, SourceType,
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
@@ -121,6 +121,14 @@ fn r02() {
         let body = req.body_json();
         assert!(body["limit"].is_u64());
         assert_eq!(body["from"], "2026-11-01T00:00:00.000Z");
+        assert_eq!(
+            params.source_types,
+            Some(vec![SourceType::Newswire, SourceType::FinancialMedia])
+        );
+        assert_eq!(
+            params.exclude_source_types,
+            Some(vec![SourceType::PressRelease])
+        );
         assert_eq!(page.articles.len(), 5);
     })
 }
@@ -361,6 +369,18 @@ fn r10() {
             sources.iter().map(|s| s.domain.clone()).collect::<Vec<_>>(),
             domains
         );
+        let types: Vec<Option<SourceType>> = f["response"]["body"]["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["type"].as_str().map(SourceType::from))
+            .collect();
+        assert_eq!(
+            sources.iter().map(|s| s.r#type.clone()).collect::<Vec<_>>(),
+            types
+        );
+        assert!(types.contains(&Some(SourceType::Blog)));
+        assert!(types.contains(&Some(SourceType::FinancialMedia)));
     })
 }
 

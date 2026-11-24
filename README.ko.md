@@ -97,6 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - `has_more: false`, `next_cursor: None`, 또는 `max_pages`(기본 10)에서 멈춥니다. 한도에 도달하면 경고를 남기고 `truncated()`가 true가 되며 `next_cursor()`로 이어서 가져올 수 있습니다.
 - 각 페이지는 과금되는 호출입니다. 결과는 한 번만 순회할 수 있습니다. 기사 단위(`next()` 또는 `futures`의 `Stream`)나 페이지 단위(`next_page()`) 중 하나를 쓰며, 다른 방식은 `Error::Validation`을 반환합니다.
 - `from`과 `to`는 `SystemTime`(밀리초 포함 UTC로 전송), `DateInput::date(y, m, d)`(`YYYY-MM-DD`로 전송), 문자열(그대로 전송)을 받습니다. `order_by` 타임스탬프에 적용됩니다.
+- `source_types`와 `exclude_source_types`는 소스 유형으로 거릅니다: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. 분류되지 않은 소스의 기사는 `source_types`와 일치하지 않고 `exclude_source_types`에서는 남습니다. 둘 다 소스 풀 안에서만 거르며 소스를 추가하지 않습니다. 스트림에서는 쓸 수 없습니다.
 - 디코딩할 수 없는 항목은 건너뛰고 로그에 남기며 `page.skipped`에 담깁니다. 페이지의 나머지는 그대로 쓸 수 있습니다.
 
 ## 기사, 기업, 출처 조회
@@ -349,6 +350,7 @@ SDK는 `tracing`으로 대상 `finlight`에 로그를 남깁니다. 구독자가
 - 역할 기능 이전에 태깅된 기사에서는 `companies[].role`과 `relevance`가 `None`이고 `events`는 `Some([])`입니다.
 - ID 도입 전에 색인된 기사는 `articles().get()`에서 404를 반환합니다. `get_by_link`로는 찾을 수 있습니다.
 - `available_at`은 raw에서 항상 `None`이며 도입 이전 기사에서도 `None`입니다.
+- 소스가 분류되지 않았거나 소스 유형이 도입되기 전에 인덱싱된 기사라면 `source.type`은 `None`입니다. 재분류 후에는 `sources().list()`의 `type`보다 늦게 반영될 수 있습니다.
 
 ## 0.1에서 마이그레이션
 

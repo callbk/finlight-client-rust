@@ -230,8 +230,17 @@ open_enum! {
 }
 
 open_enum! {
-    /// Type of a source. No values are defined yet (the server sends `null` today).
-    pub enum SourceType {}
+    /// Type of a source: `source.type` of an article, `type` of `sources().list()`, and the
+    /// values of the `source_types` / `exclude_source_types` search filters.
+    pub enum SourceType {
+        Newswire => NEWSWIRE = "newswire",
+        PressRelease => PRESS_RELEASE = "press_release",
+        FinancialMedia => FINANCIAL_MEDIA = "financial_media",
+        GeneralMedia => GENERAL_MEDIA = "general_media",
+        Aggregator => AGGREGATOR = "aggregator",
+        Blog => BLOG = "blog",
+        Government => GOVERNMENT = "government",
+    }
 }
 
 open_enum! {

@@ -69,6 +69,14 @@ fn v01() {
     );
     assert_eq!(
         consts(SourceType::ALL),
+        strings(&req["sourceTypes"]["values"])
+    );
+    assert_eq!(
+        consts(SourceType::ALL),
+        strings(&req["excludeSourceTypes"]["values"])
+    );
+    assert_eq!(
+        consts(SourceType::ALL),
         strings(&resp["sourceTypes"]["values"])
     );
     assert_eq!(

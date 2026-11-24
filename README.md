@@ -95,6 +95,7 @@ async fn main() -> Result<(), finlight::Error> {
 - It stops at `has_more: false`, at `next_cursor: None` or after `max_pages` (default 10). At the limit it logs a warning, `truncated()` is true and `next_cursor()` lets you continue.
 - Every page is a metered call. Iterate a result once: either articles (`next()`, or as a `futures` `Stream`) or pages (`next_page()`); the other way then returns `Error::Validation`.
 - `from` and `to` take a `SystemTime` (sent as UTC with milliseconds), `DateInput::date(y, m, d)` (sent as `YYYY-MM-DD`) or a string (sent as is). They apply to the `order_by` timestamp.
+- `source_types` and `exclude_source_types` filter by source type: `SourceType::NEWSWIRE`, `PRESS_RELEASE`, `FINANCIAL_MEDIA`, `GENERAL_MEDIA`, `AGGREGATOR`, `BLOG`, `GOVERNMENT`. Articles of unclassified sources never match `source_types` and are kept by `exclude_source_types`. Both filter inside the source pool and never add a source. Streams do not take them.
 - Entries that cannot be decoded are skipped, logged and listed in `page.skipped`. The rest of the page stays usable.
 
 ## Look up articles, companies and sources
@@ -347,6 +348,7 @@ The SDK logs through `tracing` with the target `finlight`. Without a subscriber 
 - On articles tagged before roles existed, `companies[].role` and `relevance` are `None`, and `events` is `Some([])`.
 - Articles indexed before the id rollout answer 404 on `articles().get()`; `get_by_link` finds them.
 - `available_at` is always `None` on raw, and `None` for articles from before its rollout.
+- `source.type` is `None` when the source is not classified or the article was indexed before source types existed. It can lag `type` in `sources().list()` after a reclassification.
 
 ## Migrating from 0.1
 

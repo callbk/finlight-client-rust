@@ -62,6 +62,8 @@ fn full_search_params() -> SearchParams {
         .sources(["a.example"])
         .opt_in_sources(["b.example"])
         .exclude_sources(["c.example"])
+        .source_types([SourceType::NEWSWIRE, "wire_service"])
+        .exclude_source_types([SourceType::PRESS_RELEASE])
         .from(DateInput::date(2026, 11, 1))
         .to("2026-11-23")
         .languages(["en"])
@@ -108,9 +110,15 @@ fn scope_requests_carry_no_v2_keys() {
         let body = mock.requests()[0].body_json();
         assert_eq!(
             body.as_object().unwrap().len(),
-            24,
+            26,
             "every search key is sent: {body}"
         );
+        assert_eq!(
+            body["sourceTypes"],
+            json!(["newswire", "wire_service"]),
+            "an unknown source type is sent unchanged"
+        );
+        assert_eq!(body["excludeSourceTypes"], json!(["press_release"]));
         assert_eq!(body["hasContent"], false, "an explicit false is sent");
         assert_eq!(body["minRelevance"], 0.0, "an explicit 0 is sent");
         for k in FORBIDDEN_KEYS {
@@ -157,6 +165,12 @@ fn scope_requests_carry_no_v2_keys() {
         let frame = dial.conn.unwrap().next("subscribe").await;
         assert_eq!(frame.as_object().unwrap().len(), 7, "{frame}");
         assert!(frame.get("include").is_none());
+        // Source-type filters exist on article search only, not on streams.
+        for key in ["sourceTypes", "excludeSourceTypes"] {
+            let json = format!(r#"{{"{key}":["blog"]}}"#);
+            assert!(StreamParams::from_json(&json).is_err(), "{key}");
+            assert!(RawStreamParams::from_json(&json).is_err(), "{key}");
+        }
         s.close().await;
         spinner.abort();
     });

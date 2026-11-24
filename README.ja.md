@@ -97,6 +97,7 @@ async fn main() -> Result<(), finlight::Error> {
 - `has_more: false`、`next_cursor: None`、または `max_pages`（既定 10）で止まります。上限に達すると警告を記録し、`truncated()` が true になり、`next_cursor()` で続きを取得できます。
 - 各ページは課金対象の呼び出しです。結果は 1 回だけ反復できます。記事単位（`next()` または `futures` の `Stream`）かページ単位（`next_page()`）のどちらかで、もう一方は `Error::Validation` を返します。
 - `from` と `to` は `SystemTime`（UTC、ミリ秒付きで送信）、`DateInput::date(y, m, d)`（`YYYY-MM-DD` で送信）、文字列（そのまま送信）を受け付けます。`order_by` のタイムスタンプに適用されます。
+- `source_types` と `exclude_source_types` はソースの種類で絞り込みます：`SourceType::NEWSWIRE`、`PRESS_RELEASE`、`FINANCIAL_MEDIA`、`GENERAL_MEDIA`、`AGGREGATOR`、`BLOG`、`GOVERNMENT`。未分類のソースの記事は `source_types` に一致せず、`exclude_source_types` では残ります。どちらもソースプールの中で絞り込むだけで、ソースを追加しません。ストリームでは使えません。
 - デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。
 
 ## 記事・企業・ソースの参照
@@ -349,6 +350,7 @@ SDK は `tracing` でターゲット `finlight` にログを出します。サ�
 - ロール導入前にタグ付けされた記事では、`companies[].role` と `relevance` は `None`、`events` は `Some([])` です。
 - ID 導入前にインデックスされた記事は `articles().get()` で 404 になります。`get_by_link` なら見つかります。
 - `available_at` は raw では常に `None`、導入前の記事でも `None` です。
+- `source.type` は、ソースが未分類の場合や、ソースの種類が導入される前にインデックスされた記事では `None` です。再分類の後は `sources().list()` の `type` より古い値のことがあります。
 
 ## 0.1 からの移行
 
