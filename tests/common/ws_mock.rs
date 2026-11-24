@@ -132,6 +132,11 @@ impl WsMock {
                 let Ok((socket, _)) = listener.accept().await else {
                     return;
                 };
+                // Without TCP_NODELAY, Nagle holds back a small frame while the previous one is
+                // unacknowledged, and on Linux loopback the client's delayed ACK takes ~40 ms of
+                // real time. The paused clock does not wait for that, so the frame would arrive
+                // virtual seconds late (or after a check). The SDK sets TCP_NODELAY too.
+                let _ = socket.set_nodelay(true);
                 let (st, ap) = (st.clone(), ap.clone());
                 tokio::spawn(async move {
                     let _ = serve(socket, st, ap).await;

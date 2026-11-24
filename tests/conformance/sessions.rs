@@ -606,15 +606,22 @@ fn subscribe_frame(file: &str, raw: bool) {
         for server in f["server"]["frames"].as_array().unwrap() {
             conn.send(server);
         }
+        // Wait for everything the server sent: the admitted hook fires before the article
+        // reaches the stream.
+        let want_items = if raw { 0 } else { 1 };
+        wait_for("admitted and the article", || {
+            let o = probe.obs();
+            o.admitted.len() == 1 && o.items.len() >= want_items
+        })
+        .await;
         settle().await;
-        wait_for("admitted", || probe.obs().admitted.len() == 1).await;
         {
             let o = probe.obs();
             assert_eq!(
                 o.admitted[0].client_nonce.as_deref(),
                 f["frame"]["clientNonce"].as_str()
             );
-            assert_eq!(o.items.len(), if raw { 0 } else { 1 });
+            assert_eq!(o.items.len(), want_items);
             if !raw {
                 assert_eq!(o.items[0].kind, StreamEventKind::Created);
             }
@@ -820,6 +827,9 @@ fn s14() {
             let conn = s.ws.dial(s.seen_dials - 1).conn.unwrap();
             conn.send(&admitted);
             conn.send(&failed);
+            // The client closes the connection when it handles SEARCH_FAILED and starts its
+            // backoff sleep in the same step; only then may the clock move.
+            wait_for("the client to close after SEARCH_FAILED", || !conn.open()).await;
             settle().await;
             let waited = s.advance_until_dial(60_000).await;
             assert!(
