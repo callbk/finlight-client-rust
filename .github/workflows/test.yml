@@ -2,13 +2,37 @@ name: Test
 
 on:
   push:
-    branches: [main]
+    branches: [main, v3]
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Docs
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         rust: [stable, "1.85"] # 1.85 is the MSRV (rust-version in Cargo.toml)
     steps:
@@ -16,13 +40,71 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        if: matrix.rust == 'stable'
-        run: cargo fmt --check
-      - name: Lint
-        if: matrix.rust == 'stable'
-        run: cargo clippy --all-targets -- -D warnings
+      # Unit, rule, conformance (every kit case + MANIFEST check), example and README doctests.
+      # No network beyond 127.0.0.1 and no keys: live tests are #[ignore]d.
       - name: Test
-        run: cargo test
+        run: cargo test --locked
+      - name: Test under a non-English locale
+        if: matrix.rust == 'stable'
+        run: cargo test --locked --test conformance --test rules
+        env:
+          LANG: tr_TR.UTF-8
+          LC_ALL: tr_TR.UTF-8
+      - name: Build the examples
+        run: cargo build --locked --examples
+
+  minimal-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@1.85
+      - name: Resolve the lowest declared versions of direct dependencies
+        run: cargo +nightly update -Z direct-minimal-versions
+      - name: Test on the MSRV with the lowest versions
+        run: cargo +1.85 test
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Package contents
+        run: |
+          cargo package --locked --list > package-files.txt
+          cat package-files.txt
+          if grep -E '^(conformance/|local/|tests/|scripts/|\.github/)' package-files.txt; then
+            echo "the package must not contain the kit, local files, tests or scripts" >&2
+            exit 1
+          fi
+      - name: Package builds from a clean copy
+        run: cargo package --locked
+
+  semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: obi1kenobi/cargo-semver-checks-action@v2
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: No AI attribution in commits
+        run: |
+          if git log --format='%B' | grep -inE 'co-authored-by|generated (with|by) .*(claude|gpt|copilot|ai)|anthropic|claude'; then
+            echo "commit messages must not carry AI attribution" >&2
+            exit 1
+          fi
+      - name: Vendored contract kit matches its MANIFEST
+        run: |
+          cd conformance
+          sha256sum --check --strict MANIFEST

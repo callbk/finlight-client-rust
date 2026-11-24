@@ -1,1 +1,4 @@
 /target
+/local
+.DS_Store
+package-files.txt

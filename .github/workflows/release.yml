@@ -1,16 +1,12 @@
 name: Release
 
-# Publishes the tagged version to crates.io via OIDC trusted publishing —
-# no long-lived API token involved. One-time setup on crates.io
-# (crate page -> Settings -> Trusted Publishing -> Add GitHub Actions):
+# Publishes the tagged version to crates.io via OIDC trusted publishing (no long-lived token).
+# crates.io setup (crate page -> Settings -> Trusted Publishing -> Add GitHub Actions):
 #   repository owner:  callbk
 #   repository name:   finlight-client-rust
 #   workflow filename: release.yml
 #   environment:       rust
-# Note: crates.io only allows configuring trusted publishing for an existing
-# crate, so the very first version must be published manually with an API
-# token (`cargo login` + `cargo publish`); every release after that goes
-# through this workflow.
+# Release: bump the version in Cargo.toml, update CHANGELOG.md, commit, tag vX.Y.Z, push the tag.
 
 on:
   push:
@@ -28,8 +24,10 @@ jobs:
       id-token: write # required for OIDC trusted publishing
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check tag matches crate version
+      - name: Tag matches the crate version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           CRATE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
@@ -37,12 +35,25 @@ jobs:
             echo "tag v${VERSION} does not match Cargo.toml version ${CRATE_VERSION}" >&2
             exit 1
           fi
+      - name: No AI attribution in commits
+        run: |
+          if git log --format='%B' | grep -inE 'co-authored-by|anthropic|claude'; then
+            echo "commit messages must not carry AI attribution" >&2
+            exit 1
+          fi
       - name: Test
-        run: cargo test
+        run: cargo test --locked
+      - name: Package contents
+        run: |
+          cargo package --locked --list > package-files.txt
+          if grep -E '^(conformance/|local/|tests/|scripts/|\.github/)' package-files.txt; then
+            echo "the package must not contain the kit, local files, tests or scripts" >&2
+            exit 1
+          fi
       - name: Authenticate with crates.io (trusted publishing)
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
       - name: Publish to crates.io
-        run: cargo publish
+        run: cargo publish --locked
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

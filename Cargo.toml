@@ -1,9 +1,9 @@
 [package]
 name = "finlight-client"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Official Rust client for the finlight.me API — financial news with sentiment analysis, entity recognition, and real-time streaming"
+description = "Breaking release: speaks finlight API v3 only (0.1.x speaks v2). Official Rust client for the finlight.me API: financial news search, lookups, real-time streams and webhook verification."
 authors = ["finlight.me <info@finlight.me>"]
 license = "MIT"
 homepage = "https://finlight.me"
@@ -12,26 +12,55 @@ documentation = "https://docs.rs/finlight-client"
 readme = "README.md"
 keywords = ["finance", "news", "api-client", "websocket", "streaming"]
 categories = ["api-bindings", "finance", "asynchronous"]
-exclude = [".github/", "local/"]
+# Published crate: library, README, license and changelog only. The contract kit,
+# local scripts, tests and their fixtures stay in the repository.
+exclude = [
+    ".github/",
+    "conformance/",
+    "CONFORMANCE.md",
+    "local/",
+    "scripts/",
+    "tests/",
+    "README.ja.md",
+    "README.ko.md",
+    "README.zh-CN.md",
+]
+
+[lib]
+name = "finlight"
 
 [dependencies]
-chrono = { version = "0.4.45", features = ["serde"] }
-futures-core = "0.3.33"
-futures-util = "0.3.33"
+futures-core = "0.3.31"
+futures-util = { version = "0.3.31", default-features = false, features = ["std", "sink"] }
+fastrand = "2.3.0"
 hex = "0.4.3"
 hmac = "0.13.0"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "query", "rustls"] }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+http = "1.3.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }
+rustls = { version = "0.23.31", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.142", features = ["float_roundtrip", "raw_value"] }
+serde_path_to_error = "0.1.17"
 sha2 = "0.11.0"
-thiserror = "2.0.20"
-tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "sync", "macros", "net"] }
-tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
-tracing = "0.1.44"
-uuid = { version = "1.24.0", features = ["v4"] }
+tokio = { version = "1.47.1", default-features = false, features = ["rt", "time", "sync", "macros", "net", "io-util"] }
+tokio-rustls = { version = "0.26.2", default-features = false, features = ["aws_lc_rs", "tls12"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+tracing = "0.1.41"
+uuid = { version = "1.18.0", features = ["v4"] }
+webpki-roots = "1.0.2"
 
 [dev-dependencies]
-axum = { version = "0.8.9", features = ["ws"] }
-futures = "0.3.33"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "full"] }
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+axum = { version = "0.8.4", default-features = false, features = ["http1", "tokio"] }
+base64 = "0.22.1"
+futures-util = { version = "0.3.31", features = ["std", "sink", "async-await-macro"] }
+libtest-mimic = "0.8.1"
+tokio = { version = "1.47.1", features = ["full", "test-util"] }
+tracing-log = "0.2.0"
+tracing-subscriber = { version = "0.3.19", default-features = false, features = ["fmt", "std", "registry"] }
+
+[[test]]
+name = "conformance"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
