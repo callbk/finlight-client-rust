@@ -21,8 +21,8 @@ Cargo never moves `"0.1"` to 0.2. A wildcard like `"*"` does, so pin the minor v
 
 - Rust 1.85 or newer (edition 2024)
 - tokio 1.47 or newer (the SDK spawns one task per stream and needs a tokio runtime)
-- reqwest 0.13 (rustls), tokio-tungstenite 0.30, serde 1, serde_json 1.0.142 or newer
-- TLS through rustls with the aws-lc-rs provider and the webpki root certificates; no OpenSSL
+- reqwest 0.13 (rustls), serde 1, serde_json 1.0.142 or newer; the WebSocket protocol is built in
+- TLS through rustls with the aws-lc-rs provider; REST and streams both verify against the operating system's trust store (rustls-platform-verifier), so a corporate CA installed there works for both; no OpenSSL
 
 ## Installation
 
@@ -204,7 +204,7 @@ async fn main() -> Result<(), Error> {
 Things to know:
 
 - **Connection limit.** Your plan's WebSocket limit is shared by enriched streams, raw streams and older SDK versions. Do not run old and new streams side by side. When the limit is reached the SDK waits at least 60 s and tries again; `StreamOptions::takeover(true)` replaces your stalest connection instead.
-- **Two hour limit.** The gateway ends every connection after 2 h. The SDK opens a new connection before that, re-subscribes, and closes the old one once the new one is admitted.
+- **Two hour limit.** The gateway ends every connection after 2 h. The SDK opens a new connection before that, re-subscribes, and closes the old one once the new one is admitted. When your plan is at its connection limit (for example a limit of 1), the old connection still counts and the new dial is refused; the SDK then closes the old connection and dials again at once, so the gap is about one dial long. Only if that dial is refused too does the usual wait of at least 60 s apply.
 - **Initial push.** After each subscribe the enriched stream sends the latest matching article. It can be old. The SDK drops it when it was already delivered on this stream.
 - **Large frames.** Live frames over 32,000 bytes are dropped by the server without notice. This can happen with `include: content` on long articles. Fetch the text with `articles().get(id, ...)` instead.
 - `on_admitted` fires before the server checks your subscribe. It does not mean the subscribe was accepted.
@@ -333,13 +333,13 @@ Cancel a call by dropping its future, for example with `tokio::time::timeout` or
 | `max_message_bytes` | 32 MiB (min. 16 MiB) | Largest incoming stream message. |
 | `connect_timeout` | 30 s | WebSocket dial and handshake timeout. |
 | `http_client` | - | Your own `reqwest::Client` for REST, e.g. for a proxy. Its own timeouts then apply and `timeout` is not used; switch off its own retries. The SDK never closes it. |
-| `ws_connector` | - | Your own `WsConnector` that opens the byte stream for stream dials (e.g. a proxy tunnel); the SDK adds TLS and the handshake. |
+| `ws_connector` | - | Your own `WsConnector` that opens the byte stream for stream dials (e.g. a proxy tunnel); the SDK adds TLS (operating system trust store) and the handshake. |
 
 Tests use tokio's paused clock (`tokio` feature `test-util`); there is no separate clock option.
 
 ## Logging
 
-The SDK logs through `tracing` with the target `finlight`. Without a subscriber nothing is printed; it never writes to stdout or stderr itself and installs no global handlers. Retries, reconnects and quota waits are warnings; per-message details are debug. The API key, the webhook secret, signatures and full bodies are never logged, and `Debug` output of `Config`, `Client` and errors leaves them out. The WebSocket library (`tungstenite`) logs frame payloads at TRACE under its own target; keep that target below TRACE in production.
+The SDK logs through `tracing` with the target `finlight`. Without a subscriber nothing is printed; it never writes to stdout or stderr itself and installs no global handlers. Retries, reconnects and quota waits are warnings; per-message details are debug. The API key, the webhook secret, signatures and full bodies are never logged, and `Debug` output of `Config`, `Client` and errors leaves them out. The SDK speaks the WebSocket protocol itself, so no transport library logs stream frames, at any level.
 
 ## Data notes
 

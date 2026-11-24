@@ -809,15 +809,31 @@ fn s14() {
                 .filter(|e| e.code.as_deref() == Some("SEARCH_FAILED"))
                 .count()
         };
-        // Failures 2 to 5 in a row: only the 5th is surfaced; the stream keeps reconnecting.
-        for _ in 2..=5 {
+        let admitted = json!({"event": "connection.admitted", "payloadVersion": 3,
+            "data": {"leaseId": "l", "serverNow": 1795467845123_i64, "clientNonce": null}});
+        // Failures 2 to 5 in a row, each after connection.admitted like the real server: only
+        // the 5th is surfaced, the stream keeps reconnecting, and admitted does not reset the
+        // backoff (the wait after failure k is at least 2^(k-2) s).
+        let mut waits = Vec::new();
+        for k in 2..=5u32 {
             assert_eq!(count(&s), 0);
             let conn = s.ws.dial(s.seen_dials - 1).conn.unwrap();
+            conn.send(&admitted);
             conn.send(&failed);
             settle().await;
-            s.advance_until_dial(60_000).await;
+            let waited = s.advance_until_dial(60_000).await;
+            assert!(
+                waited >= Duration::from_secs(1 << (k - 2)),
+                "the wait grows: {waited:?} after failure {k}"
+            );
+            assert!(
+                waited <= Duration::from_secs(31),
+                "capped by reconnect_max_delay"
+            );
+            waits.push(waited);
             s.take_redial().await;
         }
+        assert!(waits[3] > waits[0], "backoff grows: {waits:?}");
         assert_eq!(count(&s), 1);
         assert!(!s.probe.obs().done);
         s.finish().await;

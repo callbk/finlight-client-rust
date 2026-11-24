@@ -16,16 +16,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime};
 
 use futures_core::Stream;
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt, StreamExt};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::config::Config;
 use crate::error::{
@@ -36,7 +31,7 @@ use crate::http::backoff;
 use crate::models::{StreamEvent, StreamEventKind, decode_article};
 use crate::time::{epoch_millis, parse_rfc3339_nanos};
 use crate::vocab::{ConnectionErrorCode, PreemptReason, ProblemCode, ReconnectReason};
-use crate::ws::{DialOutcome, WsStream, dial};
+use crate::ws::{DialOutcome, WsConn, WsMessage, dial};
 
 type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;
 
@@ -63,7 +58,8 @@ pub struct ReconnectInfo {
     pub last_seen_at: Option<String>,
     /// Why the stream connected again.
     pub reason: ReconnectReason,
-    /// Connections this stream opened so far, the new one included.
+    /// Connections this stream opened so far, the new one included. Refused and failed dials
+    /// do not count.
     pub connection: u32,
 }
 
@@ -286,22 +282,19 @@ enum Next {
 }
 
 struct Conn {
-    sink: SplitSink<WsStream, Message>,
-    stream: SplitStream<WsStream>,
+    ws: WsConn,
     ping: Interval,
     watchdog: Instant,
     rotation: Instant,
 }
 
 impl Conn {
-    fn new(ws: WsStream, cfg: &Config) -> Self {
-        let (sink, stream) = ws.split();
+    fn new(ws: WsConn, cfg: &Config) -> Self {
         let now = Instant::now();
         let mut ping = tokio::time::interval_at(now + cfg.ping_interval, cfg.ping_interval);
         ping.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Conn {
-            sink,
-            stream,
+            ws,
             ping,
             watchdog: now + cfg.watchdog_timeout,
             rotation: now + cfg.rotation_interval,
@@ -309,18 +302,26 @@ impl Conn {
     }
 
     async fn send_text(&mut self, text: String) -> bool {
-        self.sink.send(Message::text(text)).await.is_ok()
+        self.ws.send_text(&text).await.is_ok()
     }
 
     /// Closes with 1000 (graceful) and drops the socket.
     async fn close(mut self) {
-        let frame = CloseFrame {
-            code: CloseCode::Normal,
-            reason: "".into(),
-        };
+        let _ = tokio::time::timeout(Duration::from_secs(5), self.ws.send_close(1000)).await;
+    }
+
+    /// Closes with 1000 and waits (at most 5 s) until the server confirms the close, so the
+    /// server has let go of the connection before the next dial.
+    async fn close_and_wait(mut self) {
         let _ = tokio::time::timeout(Duration::from_secs(5), async {
-            let _ = self.sink.send(Message::Close(Some(frame))).await;
-            let _ = self.sink.flush().await;
+            if self.ws.send_close(1000).await.is_err() {
+                return;
+            }
+            while let Some(Ok(msg)) = self.ws.next().await {
+                if matches!(msg, WsMessage::Close(_)) {
+                    return;
+                }
+            }
         })
         .await;
     }
@@ -485,8 +486,8 @@ fn call_hook<T>(name: &str, hook: &Option<Hook<T>>, arg: &T) {
 
 enum Event {
     Stop,
-    Current(Option<std::result::Result<Message, tokio_tungstenite::tungstenite::Error>>),
-    Old(Option<std::result::Result<Message, tokio_tungstenite::tungstenite::Error>>),
+    Current(Option<std::io::Result<WsMessage>>),
+    Old(Option<std::io::Result<WsMessage>>),
     Ping,
     Watchdog,
     Rotate,
@@ -518,7 +519,6 @@ impl Driver {
             if *self.stop.borrow() {
                 break;
             }
-            self.connections += 1;
             let outcome = tokio::select! {
                 o = dial(&self.cfg, &self.url, self.options.takeover) => o,
                 _ = self.stop.changed() => break,
@@ -674,7 +674,27 @@ impl Driver {
             .unwrap_or(None)
     }
 
-    async fn run_connection(&mut self, ws: WsStream, reason: ReconnectReason, first: bool) -> Next {
+    /// A refused dial while renewing the connection. The old connection is still open and
+    /// still counts against the connection limit, so a refusal is expected on plans at their
+    /// limit: the old connection is closed and the stream dials again at once, without
+    /// `on_error`. Only refusals that end a stream end it here too.
+    fn rotation_refusal(&mut self, status: u16, body: Option<String>) -> Plan {
+        let text = refusal_message(body.as_deref()).unwrap_or_default();
+        let terminal = status == 401
+            || (status == 403 && text.starts_with(NO_WEBSOCKETS_PREFIX))
+            || (status == 403 && text.starts_with(QUOTA_PREFIX) && !self.cfg.quota_reconnect);
+        if terminal {
+            return self.classify_refusal(status, body);
+        }
+        tracing::info!(
+            target: "finlight",
+            "the renewal dial was refused with HTTP {status}; closing the old connection and dialing again now"
+        );
+        Plan::Reconnect(ReconnectReason::Rotation, Delay::Now)
+    }
+
+    async fn run_connection(&mut self, ws: WsConn, reason: ReconnectReason, first: bool) -> Next {
+        self.connections += 1;
         let mut cur = Conn::new(ws, &self.cfg);
         let mut old: Option<Conn> = None;
         if !cur.send_text(self.subscribe_text()).await {
@@ -693,14 +713,14 @@ impl Driver {
             let event = {
                 let old_next = async {
                     match old.as_mut() {
-                        Some(c) => c.stream.next().await,
+                        Some(c) => c.ws.next().await,
                         None => std::future::pending().await,
                     }
                 };
                 tokio::select! {
                     biased;
                     _ = self.stop.changed() => Event::Stop,
-                    m = cur.stream.next() => Event::Current(m),
+                    m = cur.ws.next() => Event::Current(m),
                     m = old_next => Event::Old(m),
                     _ = cur.ping.tick() => Event::Ping,
                     _ = tokio::time::sleep_until(cur.watchdog) => Event::Watchdog,
@@ -738,7 +758,6 @@ impl Driver {
                 }
                 Event::Rotate => {
                     tracing::info!(target: "finlight", "renewing the stream connection before the 2 h gateway limit");
-                    self.connections += 1;
                     let outcome = tokio::select! {
                         o = dial(&self.cfg, &self.url, self.options.takeover) => o,
                         _ = self.stop.changed() => {
@@ -748,9 +767,10 @@ impl Driver {
                     };
                     match outcome {
                         DialOutcome::Open(ws) => {
+                            self.connections += 1;
                             let mut fresh = Conn::new(*ws, &self.cfg);
                             if !fresh.send_text(self.subscribe_text()).await {
-                                cur.close().await;
+                                cur.close_and_wait().await;
                                 return Next::Plan(Plan::Reconnect(
                                     ReconnectReason::Rotation,
                                     Delay::Now,
@@ -765,26 +785,22 @@ impl Driver {
                             old = Some(std::mem::replace(&mut cur, fresh));
                         }
                         DialOutcome::Refused { status, body } => {
-                            cur.close().await;
-                            return Next::Plan(match self.classify_refusal(status, body) {
-                                Plan::Reconnect(_, delay) => {
-                                    Plan::Reconnect(ReconnectReason::Rotation, delay)
-                                }
-                                terminal => terminal,
-                            });
+                            cur.close_and_wait().await;
+                            return Next::Plan(self.rotation_refusal(status, body));
                         }
                         DialOutcome::Failed(err) => {
-                            self.report(err);
-                            cur.close().await;
+                            // Dial again at once; a failure of that dial is reported as usual.
+                            tracing::warn!(target: "finlight", "the renewal dial failed ({err}); dialing again now");
+                            cur.close_and_wait().await;
                             return Next::Plan(Plan::Reconnect(
                                 ReconnectReason::Rotation,
-                                Delay::Backoff,
+                                Delay::Now,
                             ));
                         }
                     }
                 }
                 Event::Old(msg) => match msg {
-                    Some(Ok(Message::Text(text))) => {
+                    Some(Ok(WsMessage::Text(text))) => {
                         // The old connection of a rotation still delivers until the new one is admitted.
                         if let Some(frame) = frames::decode(text.as_str()) {
                             if let Frame::Article { .. } | Frame::Other { .. } = frame {
@@ -792,12 +808,12 @@ impl Driver {
                             }
                         }
                     }
+                    Some(Ok(WsMessage::Close(_))) | Some(Err(_)) | None => old = None,
                     Some(Ok(_)) => {}
-                    _ => old = None,
                 },
                 Event::Current(msg) => {
                     let close_code = match msg {
-                        Some(Ok(Message::Text(text))) => {
+                        Some(Ok(WsMessage::Text(text))) => {
                             match self.handle_frame(text.as_str(), &mut cur, &mut old).await {
                                 None => continue,
                                 Some(plan) => {
@@ -809,7 +825,13 @@ impl Driver {
                                 }
                             }
                         }
-                        Some(Ok(Message::Close(frame))) => frame.map(|f| u16::from(f.code)),
+                        Some(Ok(WsMessage::Close(code))) => code,
+                        Some(Ok(WsMessage::Ping(payload))) => {
+                            if cur.ws.send_pong(&payload).await.is_err() {
+                                tracing::debug!(target: "finlight", "could not answer a WebSocket ping");
+                            }
+                            continue;
+                        }
                         Some(Ok(_)) => continue,
                         Some(Err(e)) => {
                             tracing::debug!(target: "finlight", "stream connection error: {e}");
@@ -863,6 +885,8 @@ impl Driver {
         match frame {
             Frame::Pong => {
                 cur.watchdog = Instant::now() + self.cfg.watchdog_timeout;
+                // The connection works: the reconnect backoff starts over.
+                self.failures = 0;
                 None
             }
             Frame::Admitted {
@@ -870,7 +894,8 @@ impl Driver {
                 server_now,
                 client_nonce,
             } => {
-                self.failures = 0;
+                // Admitted comes before the subscribe is checked and the initial search runs,
+                // so it does not reset the reconnect backoff; a pong or an article does.
                 self.quota_waits = 0;
                 if let Some(o) = old.take() {
                     o.close().await;
@@ -934,6 +959,9 @@ impl Driver {
                 }
             }
             frame @ (Frame::Article { .. } | Frame::Other { .. }) => {
+                if matches!(frame, Frame::Article { .. }) {
+                    self.failures = 0;
+                }
                 self.deliver(frame, text);
                 None
             }

@@ -23,8 +23,8 @@ Cargo 不会把 `"0.1"` 升级到 0.2。`"*"` 这样的通配符会，所以请�
 
 - Rust 1.85 或更高（edition 2024）
 - tokio 1.47 或更高（每个流会启动一个任务，需要 tokio 运行时）
-- reqwest 0.13（rustls）、tokio-tungstenite 0.30、serde 1、serde_json 1.0.142 或更高
-- TLS 使用 rustls（aws-lc-rs 提供程序和 webpki 根证书），不需要 OpenSSL
+- reqwest 0.13（rustls）、serde 1、serde_json 1.0.142 或更高；WebSocket 协议由 SDK 自带实现
+- TLS 使用 rustls（aws-lc-rs 提供程序）；REST 和流都使用操作系统的信任存储（rustls-platform-verifier）验证证书，因此安装在系统中的企业 CA 对两者都有效；不需要 OpenSSL
 
 ## 安装
 
@@ -206,7 +206,7 @@ async fn main() -> Result<(), Error> {
 需要了解：
 
 - **连接数上限。** 套餐的 WebSocket 上限由增强流、原始流和旧版 SDK 共享。不要同时运行新旧流。达到上限时，SDK 至少等待 60 秒再重试；`StreamOptions::takeover(true)` 会替换你最旧的连接。
-- **两小时上限。** 网关会在 2 小时后断开每个连接。SDK 会提前打开新连接并重新订阅，新连接 admitted 后关闭旧连接。
+- **两小时上限。** 网关会在 2 小时后断开每个连接。SDK 会提前打开新连接并重新订阅，新连接 admitted 后关闭旧连接。如果你的套餐已达到连接上限（例如上限为 1），旧连接仍被计入，新连接会被拒绝；SDK 随即关闭旧连接并立即重新连接，中断时间大约只有一次连接的长度。只有这次连接也被拒绝时，才会按常规至少等待 60 秒。
 - **首次推送。** 每次订阅后，增强流会发送一篇最新的匹配文章，它可能是旧的。如果该文章已在本流中送达，SDK 会丢弃它。
 - **大帧。** 超过 32,000 字节的实时帧会被服务器静默丢弃。对长文章使用 `include: content` 时可能发生。请改用 `articles().get(id, ...)` 获取正文。
 - `on_admitted` 在服务器检查订阅之前触发，并不表示订阅已被接受。
@@ -335,13 +335,13 @@ finlight::Error                       kind()
 | `max_message_bytes` | 32 MiB（最少 16 MiB） | 接收的流消息上限。 |
 | `connect_timeout` | 30 秒 | WebSocket 拨号和握手超时。 |
 | `http_client` | - | 用于 REST 的自定义 `reqwest::Client`（例如代理）。此时使用它自己的超时，不使用 `timeout`；请关闭它自己的重试。SDK 不会关闭它。 |
-| `ws_connector` | - | 为流连接打开字节流的自定义 `WsConnector`（例如代理隧道）；TLS 和握手由 SDK 完成。 |
+| `ws_connector` | - | 为流连接打开字节流的自定义 `WsConnector`（例如代理隧道）；TLS（操作系统信任存储）和握手由 SDK 完成。 |
 
 测试使用 tokio 的暂停时钟（`tokio` 的 `test-util` 特性），没有单独的时钟选项。
 
 ## 日志
 
-SDK 通过 `tracing` 以目标 `finlight` 记录日志。没有订阅者时不输出任何内容；它从不直接写 stdout 或 stderr，也不安装全局处理器。重试、重连和配额等待记为警告；逐条消息的细节为 debug。API 密钥、Webhook 密钥、签名和完整正文绝不会出现在日志中，`Config`、`Client` 和错误的 `Debug` 输出也不包含它们。WebSocket 库（`tungstenite`）会在自己的目标下以 TRACE 级别记录帧内容；生产环境中请让该目标低于 TRACE。
+SDK 通过 `tracing` 以目标 `finlight` 记录日志。没有订阅者时不输出任何内容；它从不直接写 stdout 或 stderr，也不安装全局处理器。重试、重连和配额等待记为警告；逐条消息的细节为 debug。API 密钥、Webhook 密钥、签名和完整正文绝不会出现在日志中，`Config`、`Client` 和错误的 `Debug` 输出也不包含它们。SDK 自己实现 WebSocket 协议，因此没有任何传输库会在任何级别记录流的帧内容。
 
 ## 数据说明
 

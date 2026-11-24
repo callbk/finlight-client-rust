@@ -20,7 +20,12 @@ use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Role, WebSocketConfig
 #[derive(Debug, Clone)]
 pub enum DialScript {
     Accept,
-    Refuse { status: u16, body: Option<String> },
+    Refuse {
+        status: u16,
+        body: Option<String>,
+    },
+    /// Writes these bytes as the answer and keeps the socket open until the client closes it.
+    Raw(String),
 }
 
 enum Cmd {
@@ -216,6 +221,14 @@ async fn serve(
         conn: None,
     };
     match script {
+        DialScript::Raw(response) => {
+            state.lock().unwrap().dials.push(dial);
+            socket.write_all(response.as_bytes()).await?;
+            socket.flush().await?;
+            let mut sink = [0u8; 1024];
+            while socket.read(&mut sink).await? > 0 {}
+            Ok(())
+        }
         DialScript::Refuse { status, body } => {
             state.lock().unwrap().dials.push(dial);
             let body = body.unwrap_or_default();

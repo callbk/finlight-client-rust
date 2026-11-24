@@ -700,6 +700,24 @@ fn logging_never_shows_secrets_and_installs_nothing_global() {
             let item = s.next().await.unwrap();
             let err = item.unwrap_err();
             texts.push(format!("{err} {err:?} {s:?}"));
+
+            // A streamed article and the subscribe frame at TRACE. The server here writes raw
+            // bytes, so any frame log would come from the SDK side.
+            let mut article = article_json();
+            article["title"] = json!(ARTICLE_MARKER);
+            let frames = vec![
+                json!({"event": "connection.admitted", "payloadVersion": 3,
+                    "data": {"leaseId": "l", "serverNow": 1763932800123_i64, "clientNonce": null}}),
+                json!({"event": "article.created", "payloadVersion": 3, "data": article}),
+            ];
+            let url = raw_ws_server(frames).await;
+            let c = Client::new(Config::builder(KEY).wss_url(url).build().unwrap()).unwrap();
+            let mut params = StreamParams::new();
+            params.query = Some(QUERY_MARKER.to_owned());
+            let mut s = c.stream(params, StreamOptions::new()).await.unwrap();
+            let event = s.next().await.unwrap().unwrap();
+            assert_eq!(event.data.unwrap().title, ARTICLE_MARKER);
+            s.close().await;
             spinner.abort();
 
             let body = r#"{"payloadVersion":3}"#;
@@ -724,6 +742,68 @@ fn logging_never_shows_secrets_and_installs_nothing_global() {
         assert!(!text.contains(KEY), "the API key leaked: {text}");
         assert!(!text.contains(SECRET), "the secret leaked: {text}");
     }
+    // No frame payload in the log, as text or as hex, and no transport library logging frames.
+    for marker in [ARTICLE_MARKER, QUERY_MARKER] {
+        assert!(!log.contains(marker), "a frame body was logged: {log}");
+        assert!(
+            !log.contains(&hex::encode(marker)),
+            "a frame body was logged as hex: {log}"
+        );
+    }
+    assert!(
+        !log.contains("tungstenite"),
+        "the WebSocket transport logged: {log}"
+    );
+}
+
+const ARTICLE_MARKER: &str = "ZEBRA payload marker 4711";
+const QUERY_MARKER: &str = "QUAGGA_query_marker_0815";
+
+/// A one-connection WebSocket server that writes raw frames (no WebSocket library), then
+/// keeps the socket open until the client closes it. Returns its ws:// URL.
+async fn raw_ws_server(frames: Vec<Value>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            sock.read_exact(&mut byte).await.unwrap();
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8(head).unwrap();
+        let key = head
+            .lines()
+            .find_map(|l| l.strip_prefix("sec-websocket-key: "))
+            .unwrap()
+            .trim()
+            .to_owned();
+        let accept = tokio_tungstenite::tungstenite::handshake::derive_accept_key(key.as_bytes());
+        let mut out = format!(
+            "HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: {accept}\r\n\r\n"
+        )
+        .into_bytes();
+        for frame in frames {
+            let payload = frame.to_string().into_bytes();
+            out.push(0x81);
+            if payload.len() < 126 {
+                out.push(payload.len() as u8);
+            } else if payload.len() <= 0xffff {
+                out.push(126);
+                out.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+            } else {
+                out.push(127);
+                out.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+            }
+            out.extend_from_slice(&payload);
+        }
+        sock.write_all(&out).await.unwrap();
+        let mut sink = [0u8; 1024];
+        while sock.read(&mut sink).await.unwrap_or(0) > 0 {}
+    });
+    format!("ws://{addr}")
 }
 
 // ---- R-WS-6, R-WS-2 extras -------------------------------------------------------------
@@ -855,6 +935,168 @@ fn stream_refusal_without_body_falls_back_to_status() {
     });
 }
 
+#[test]
+fn stream_refusal_body_chunked_or_endless_is_read_in_time() {
+    run_paused(async {
+        let ws = WsMock::start().await;
+        let spinner = spawn_spinner();
+        let c = Client::new(
+            Config::builder(KIT_API_KEY)
+                .wss_url(ws.url.clone())
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        // Chunked body on a kept-alive connection: read in full, so the refusal is terminal.
+        let body = r#"{"message":"Your subscription does not include WebSockets"}"#;
+        ws.script(DialScript::Raw(format!(
+            "HTTP/1.1 403 Forbidden\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\
+             connection: keep-alive\r\n\r\n{:x}\r\n{}\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+            20,
+            &body[..20],
+            body.len() - 20,
+            &body[20..]
+        )));
+        let mut s = c
+            .stream(StreamParams::new(), StreamOptions::new())
+            .await
+            .unwrap();
+        let err = s.next().await.unwrap().unwrap_err();
+        assert_eq!(err.as_api().unwrap().status(), 403);
+        assert!(
+            err.to_string().contains("does not include WebSockets"),
+            "{err}"
+        );
+        assert!(s.next().await.is_none(), "terminal");
+        assert_eq!(ws.dial_count(), 1);
+
+        // A body that never ends counts as missing after 5 s: 403 falls back to the long wait.
+        ws.script(DialScript::Raw(
+            "HTTP/1.1 403 Forbidden\r\nconnection: keep-alive\r\n\r\n{\"message\":".to_owned(),
+        ));
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let e2 = errors.clone();
+        let mut s = c
+            .stream(
+                StreamParams::new(),
+                StreamOptions::new().on_error(move |e| e2.lock().unwrap().push(e.to_string())),
+            )
+            .await
+            .unwrap();
+        ws.wait_dial(1).await;
+        common::advance(7_000).await;
+        wait_for("the refusal is reported", || {
+            !errors.lock().unwrap().is_empty()
+        })
+        .await;
+        assert!(
+            errors.lock().unwrap()[0].contains("HTTP 403"),
+            "{:?}",
+            errors.lock().unwrap()
+        );
+        assert!(!s.closed());
+        common::advance(50_000).await;
+        assert_eq!(ws.dial_count(), 2, "long wait, not a timeout backoff");
+        s.close().await;
+        spinner.abort();
+    });
+}
+
+#[test]
+fn stream_rotation_refused_redials_at_once() {
+    run_paused(async {
+        let ws = WsMock::start().await;
+        let spinner = spawn_spinner();
+        let too_many =
+            load("ws-sessions/dial-too-many-connections.json")["steps"][0]["server"]["body"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+        ws.script(DialScript::Accept);
+        // The renewal dial meets the old connection at the plan's limit of 1.
+        ws.script(DialScript::Refuse {
+            status: 403,
+            body: Some(too_many.clone()),
+        });
+        ws.script(DialScript::Accept);
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let reconnects = Arc::new(Mutex::new(Vec::new()));
+        let (e2, r2) = (errors.clone(), reconnects.clone());
+        let c = Client::new(
+            Config::builder(KIT_API_KEY)
+                .wss_url(ws.url.clone())
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        let options = StreamOptions::new()
+            .on_error(move |e| e2.lock().unwrap().push(e.to_string()))
+            .on_reconnect(move |r| r2.lock().unwrap().push((r.reason.clone(), r.connection)));
+        let mut s = c.stream(StreamParams::new(), options).await.unwrap();
+        let first = ws.wait_dial(0).await.conn.unwrap();
+        first.next("subscribe").await;
+        first.send(&json!({"event": "connection.admitted", "payloadVersion": 3,
+            "data": {"leaseId": "l1", "serverNow": 1763932800123_i64, "clientNonce": null}}));
+        common::advance(115 * 60 * 1000).await;
+        ws.wait_dial(1).await;
+        // No clock movement: the next dial follows at once.
+        let third = ws.wait_dial(2).await.conn.expect("accepted");
+        third.next("re-subscribe").await;
+        assert_eq!(
+            first.closed_code(),
+            Some(Some(1000)),
+            "the old connection was closed"
+        );
+        assert!(
+            errors.lock().unwrap().is_empty(),
+            "the expected refusal is not an error"
+        );
+        wait_for("on_reconnect", || !reconnects.lock().unwrap().is_empty()).await;
+        assert_eq!(
+            reconnects.lock().unwrap().as_slice(),
+            [(ReconnectReason::Rotation, 2)],
+            "refused dials are not counted as connections"
+        );
+        assert!(!s.closed());
+        s.close().await;
+
+        // When the immediate redial is refused as well, the long wait applies.
+        ws.script(DialScript::Accept);
+        ws.script(DialScript::Refuse {
+            status: 403,
+            body: Some(too_many.clone()),
+        });
+        ws.script(DialScript::Refuse {
+            status: 403,
+            body: Some(too_many),
+        });
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let e2 = errors.clone();
+        let mut s = c
+            .stream(
+                StreamParams::new(),
+                StreamOptions::new().on_error(move |e| e2.lock().unwrap().push(e.to_string())),
+            )
+            .await
+            .unwrap();
+        let conn = ws.wait_dial(3).await.conn.unwrap();
+        conn.next("subscribe").await;
+        common::advance(115 * 60 * 1000).await;
+        ws.wait_dial(5).await;
+        wait_for("the second refusal is reported", || {
+            errors.lock().unwrap().len() == 1
+        })
+        .await;
+        common::advance(59_000).await;
+        assert_eq!(ws.dial_count(), 6, "long wait after the second refusal");
+        common::advance(13_000).await;
+        assert_eq!(ws.dial_count(), 7);
+        s.close().await;
+        spinner.abort();
+    });
+}
+
 // ---- R-HOOK-1, R-HOOK-2 ----------------------------------------------------------------
 
 fn signed(body: &str, secret: &str, ts: &str) -> String {
@@ -961,6 +1203,17 @@ fn webhooks_reject_bad_headers_and_read_versions() {
             assert_eq!(w.link.as_deref(), Some("https://x.example/a"));
         }
     }
+    // `raw` is the received text: key order and big integers stay as they were.
+    let body =
+        r#"{"payloadVersion":2,"link":"https://x.example/a","n":12345678901234567890123,"a":1}"#;
+    let sig = signed(body, "s", ts);
+    let Ok(WebhookPayload::WrongPayloadVersion(w)) =
+        construct_event_from_values(body, Some(&sig), Some(ts), "s", &opts)
+    else {
+        panic!("expected WrongPayloadVersion")
+    };
+    assert_eq!(w.raw, body);
+    assert_eq!(w.raw_json(), body);
     // A verified body that is not a JSON object.
     let body = "[1,2]";
     let sig = signed(body, "s", ts);

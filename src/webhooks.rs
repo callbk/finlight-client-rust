@@ -203,14 +203,14 @@ pub struct WrongPayloadVersion {
     pub payload_version: Option<String>,
     /// Whether the body had a `payloadVersion` key.
     pub payload_version_present: bool,
-    /// The parsed body as JSON text.
+    /// The verified body text, exactly as received.
     pub raw: String,
     /// The article link, when it can be read.
     pub link: Option<String>,
 }
 
 impl WrongPayloadVersion {
-    /// The body as JSON text.
+    /// The verified body text, exactly as received.
     pub fn raw_json(&self) -> &str {
         &self.raw
     }
@@ -407,7 +407,7 @@ fn read_event(body: &[u8]) -> Result<WebhookPayload> {
             detected_version: 2,
             payload_version: version.map(Value::to_string),
             payload_version_present: version.is_some(),
-            raw: json.to_string(),
+            raw: text.to_owned(),
             link,
         }));
     }
